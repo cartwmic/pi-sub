@@ -69,7 +69,7 @@ If you previously installed `sub-core` separately, remove it from `~/.pi/agent/e
 Manual install (local development):
 
 ```bash
-git clone https://github.com/marckrenn/pi-sub.git
+git clone https://github.com/cartwmic/pi-sub.git
 cd pi-sub
 npm install
 

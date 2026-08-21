@@ -590,6 +590,7 @@ export default function createExtension(pi: ExtensionAPI) {
 			console.error(`[pi-sub-bar] source=${import.meta.url}`);
 			console.error(`[pi-sub-bar] settings=${SETTINGS_PATH}`);
 			console.error(`[pi-sub-bar] metricSet=${JSON.stringify(settings.metricSet)}`);
+			console.error(`[pi-sub-bar] model=${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "(none)"}`);
 			console.error(`[pi-sub-bar] usage ${line || "(empty)"}`);
 			return;
 		}

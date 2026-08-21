@@ -11,24 +11,18 @@ Shared usage data core for pi extensions. Sub-core owns fetching, caching, provi
 
 ## Installation
 
-Install via the pi package manager (recommended):
+This fork installs as a Pi GitHub package. The operator path loads `sub-core` together with `sub-bar` from the repo root:
 
 ```bash
-pi install npm:@marckrenn/pi-sub-core
+pi install https://github.com/cartwmic/pi-sub
 ```
 
-Use `-l` to install into project settings instead of global:
-
-```bash
-pi install -l npm:@marckrenn/pi-sub-core
-```
-
-For a UI, also install a display extension like `sub-bar` from the same repo (see the root README for the full setup).
+Do not use `npm:@marckrenn/pi-sub-core` (global or `-l`) as this fork's install; that npm name is the upstream package. See the root README for the full setup.
 
 Manual install (local development):
 
 ```bash
-git clone https://github.com/marckrenn/pi-sub.git
+git clone https://github.com/cartwmic/pi-sub.git
 ln -s /path/to/pi-sub/packages/sub-core ~/.pi/agent/extensions/sub-core
 ```
 
@@ -98,6 +92,7 @@ Legacy cache files next to the extension entry or in the agent root are migrated
 | Google Gemini | Pro/Flash quotas | ✅ | Aggregated by model family |
 | Antigravity | Model quotas | ✅ | Sandbox Cloud Code Assist quotas (tested) |
 | OpenAI Codex | Primary/secondary windows | ✅ | Credits not yet supported (PRs welcome!) |
+| Cursor | Current-cycle spend (cap from `metricSet`) | - | Remaining/spend need a positive bar `metricSet` cap; no compiled cap |
 | AWS Kiro | Credits | - | Credits not yet supported (PRs welcome!) |
 | z.ai | Tokens/monthly limits | - | API quota limits |
 
@@ -105,11 +100,13 @@ Legacy cache files next to the extension entry or in the agent root are migrated
 
 ### Packaging notes (pi install compatibility)
 
-Pi packages use a `pi` field in `package.json` plus the `pi-package` keyword for discoverability. This repo already declares `pi.extensions`, so you can install via:
+Pi packages use a `pi` field in `package.json` plus the `pi-package` keyword for discoverability. This fork's operator install is the repo root:
 
 ```bash
-pi install npm:@marckrenn/pi-sub-core
+pi install https://github.com/cartwmic/pi-sub
 ```
+
+Upstream npm names (`npm:@marckrenn/pi-sub-core`) are not this operator's install path.
 
 Manual paths/symlinks still work for local development as documented above.
 
