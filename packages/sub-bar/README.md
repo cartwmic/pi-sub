@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/d61d82f6-afd0-45fc-82f3-69910543aa7a
 | Google Gemini | Pro, Flash | - | ✅ | - | Quotas aggregated per model family |
 | Antigravity | Models | - | ✅ | ✅ | Sandbox Cloud Code Assist quotas |
 | OpenAI Codex | Primary, Secondary | - | ✅ | ✅ | Credits not yet supported (PRs welcome!) |
-| Cursor | Cycle | remaining percent, or remaining/spend dollars vs API cap | - | ✅ | Dollars use API `capAmount` unless `metricSet` sets `cap`; no compiled cap |
+| Cursor | Cycle | remaining percent, or remaining/spend dollars vs API cap | - | ✅ | Dollars use API `capAmount` (team/hard-limit/on-demand, never the included pool) unless `metricSet` sets `cap`; no compiled cap |
 | AWS Kiro | Credits | - | - | - | - |
 | z.ai | Tokens, Monthly | - | - | - | API quota limits |
 

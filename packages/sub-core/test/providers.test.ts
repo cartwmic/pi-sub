@@ -414,7 +414,7 @@ test("cursor fetchUsage reports no credentials without auth.json cursor.access",
 	assert.equal(usage.windows.length, 0);
 });
 
-test("cursor fetch maps usage-summary percent, spend dollars, and API cap", async () => {
+test("cursor fetch maps usage-summary percent and spend without treating the included pool as a cap", async () => {
 	const provider = new CursorProvider();
 	const token = cursorAccessToken("user-1");
 	const cycleEnd = new Date("2026-09-15T00:00:00.000Z");
@@ -436,6 +436,7 @@ test("cursor fetch maps usage-summary percent, spend dollars, and API cap", asyn
 							limit: 7000,
 							breakdown: { included: 7000, bonus: 53448, total: 60448 },
 						},
+						onDemand: { enabled: false, used: 0, limit: null, remaining: null },
 					},
 				});
 			}
@@ -465,7 +466,7 @@ test("cursor fetch maps usage-summary percent, spend dollars, and API cap", asyn
 	assert.equal(usage.windows.length, 1);
 	assert.equal(usage.windows[0]?.usedAmount, 12.34);
 	assert.equal(usage.windows[0]?.usedPercent, 66.42);
-	assert.equal(usage.windows[0]?.capAmount, 604.48);
+	assert.equal(usage.windows[0]?.capAmount, undefined);
 	assert.equal(usage.windows[0]?.label, "");
 	assert.equal(usage.windows[0]?.resetAt, cycleEnd.toISOString());
 	assert.ok(usage.windows[0]?.resetDescription);
@@ -624,4 +625,77 @@ test("cursor fetch uses team monthly dollars when hard-limit is absent", async (
 	const usage = await provider.fetchUsage(deps);
 	assert.equal(usage.windows[0]?.usedAmount, 125);
 	assert.equal(usage.windows[0]?.capAmount, 500);
+});
+
+test("cursor fetch uses personal hard-limit dollars when team is absent", async () => {
+	const provider = new CursorProvider();
+	const token = cursorAccessToken("user-1");
+	const { deps, files } = createDeps({
+		fetch: async (url) => {
+			const href = String(url);
+			if (href === "https://cursor.com/api/usage-summary") {
+				return createJsonResponse({
+					individualUsage: {
+						plan: { totalPercentUsed: 40, breakdown: { total: 61381 } },
+						onDemand: { enabled: false, used: 0, limit: null },
+					},
+				});
+			}
+			if (href === "https://cursor.com/api/dashboard/get-plan-info") {
+				return createJsonResponse({ planInfo: { includedAmountCents: 7000 } });
+			}
+			if (href === "https://cursor.com/api/dashboard/get-hard-limit") {
+				return createJsonResponse({ hardLimit: 750 });
+			}
+			if (href === "https://cursor.com/api/dashboard/teams") {
+				return createJsonResponse({});
+			}
+			if (href === "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents") {
+				return createJsonResponse({ totalCostCents: 12500 });
+			}
+			throw new Error(`unexpected url ${href}`);
+		},
+	});
+	withAuth(files, { cursor: { access: token } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.windows[0]?.usedAmount, 125);
+	assert.equal(usage.windows[0]?.capAmount, 750);
+});
+
+test("cursor fetch uses on-demand cents as spend when usage-based is enabled", async () => {
+	const provider = new CursorProvider();
+	const token = cursorAccessToken("user-1");
+	const { deps, files } = createDeps({
+		fetch: async (url) => {
+			const href = String(url);
+			if (href === "https://cursor.com/api/usage-summary") {
+				return createJsonResponse({
+					individualUsage: {
+						plan: { totalPercentUsed: 40, used: 7000, limit: 7000, breakdown: { total: 61381 } },
+						onDemand: { enabled: true, used: 12500, limit: 75000, remaining: 62500 },
+					},
+				});
+			}
+			if (href === "https://cursor.com/api/dashboard/get-plan-info") {
+				return createJsonResponse({ planInfo: { includedAmountCents: 7000 } });
+			}
+			if (href === "https://cursor.com/api/dashboard/get-hard-limit") {
+				return createJsonResponse({ noUsageBasedAllowed: true });
+			}
+			if (href === "https://cursor.com/api/dashboard/teams") {
+				return createJsonResponse({});
+			}
+			if (href === "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents") {
+				return createJsonResponse({ totalCostCents: 99999 });
+			}
+			throw new Error(`unexpected url ${href}`);
+		},
+	});
+	withAuth(files, { cursor: { access: token } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.windows[0]?.usedPercent, 40);
+	assert.equal(usage.windows[0]?.usedAmount, 125);
+	assert.equal(usage.windows[0]?.capAmount, 750);
 });

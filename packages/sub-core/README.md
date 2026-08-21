@@ -92,7 +92,7 @@ Legacy cache files next to the extension entry or in the agent root are migrated
 | Google Gemini | Pro/Flash quotas | ✅ | Aggregated by model family |
 | Antigravity | Model quotas | ✅ | Sandbox Cloud Code Assist quotas (tested) |
 | OpenAI Codex | Primary/secondary windows | ✅ | Credits not yet supported (PRs welcome!) |
-| Cursor | Cycle percent plus spend vs API cap | - | Remaining percent needs no cap; dollars remaining/spend use API `capAmount` unless `metricSet` overrides `cap`; no compiled cap |
+| Cursor | Cycle percent plus spend vs API cap | - | Remaining percent needs no cap; dollars remaining/spend use API `capAmount` (team/hard-limit/on-demand, never the included pool) unless `metricSet` overrides `cap`; no compiled cap |
 | AWS Kiro | Credits | - | Credits not yet supported (PRs welcome!) |
 | z.ai | Tokens/monthly limits | - | API quota limits |
 

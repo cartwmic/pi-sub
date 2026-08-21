@@ -2,9 +2,11 @@
  * Cursor usage provider
  *
  * Subscription percent comes from GET /api/usage-summary
- * (`individualUsage.plan.totalPercentUsed`). Spend dollars come from
- * GetAggregatedUsageEvents (or team spend when a team exists). The spend cap
- * is whatever Cursor's dashboard APIs report — never a compiled default.
+ * (`individualUsage.plan.totalPercentUsed`). Spend dollars come from team
+ * spend, on-demand usage, or GetAggregatedUsageEvents. The spend cap is a
+ * usage-based/team limit from Cursor's dashboard APIs (hard-limit, team
+ * override/monthly, on-demand limit) — never the included subscription pool
+ * and never a compiled default.
  */
 
 import * as path from "node:path";
@@ -46,6 +48,12 @@ type UsageSummaryResponse = {
 				bonus?: number | string;
 				total?: number | string;
 			};
+		};
+		onDemand?: {
+			enabled?: boolean;
+			used?: number | string;
+			limit?: number | string;
+			remaining?: number | string;
 		};
 	};
 };
@@ -220,9 +228,9 @@ async function fetchUsageSummary(
 	usedPercent?: number;
 	billingCycleStart?: Date;
 	billingCycleEnd?: Date;
-	planUsedDollars?: number;
-	planLimitDollars?: number;
-	planPoolDollars?: number;
+	onDemandEnabled?: boolean;
+	onDemandUsedDollars?: number;
+	onDemandLimitDollars?: number;
 } | undefined> {
 	const result = await requestJson(deps, USAGE_SUMMARY_URL, dashboardHeaders(token), { method: "GET" });
 	if (!result.ok || !result.data || typeof result.data !== "object") {
@@ -231,13 +239,14 @@ async function fetchUsageSummary(
 
 	const data = result.data as UsageSummaryResponse;
 	const plan = data.individualUsage?.plan;
+	const onDemand = data.individualUsage?.onDemand;
 	return {
 		usedPercent: toFiniteNumber(plan?.totalPercentUsed),
 		billingCycleStart: parseTimestamp(data.billingCycleStart),
 		billingCycleEnd: parseTimestamp(data.billingCycleEnd),
-		planUsedDollars: centsToDollars(plan?.used),
-		planLimitDollars: centsToDollars(plan?.limit),
-		planPoolDollars: centsToDollars(plan?.breakdown?.total) ?? centsToDollars(plan?.limit),
+		onDemandEnabled: onDemand?.enabled === true,
+		onDemandUsedDollars: centsToDollars(onDemand?.used),
+		onDemandLimitDollars: firstPositive(centsToDollars(onDemand?.limit)),
 	};
 }
 
@@ -409,21 +418,23 @@ export class CursorProvider extends BaseProvider {
 		const billingCycleStart = summary?.billingCycleStart;
 		const usage = await fetchAggregatedUsage(deps, token, billingCycleEnd, billingCycleStart);
 
+		const onDemandEnabled = summary?.onDemandEnabled === true;
 		const usedAmount =
 			teamSpend.usedDollars !== undefined && Number.isFinite(teamSpend.usedDollars)
 				? teamSpend.usedDollars
-				: usage.ok
-					? usage.totalCostCents / 100
-					: undefined;
+				: onDemandEnabled && summary?.onDemandUsedDollars !== undefined
+					? summary.onDemandUsedDollars
+					: usage.ok
+						? usage.totalCostCents / 100
+						: undefined;
 
+		// Included/bonus pool dollars are subscription usage, not a spend cap.
 		const capAmount = firstPositive(
 			teamSpend.overrideDollars,
 			teamHardLimit,
 			teamSpend.monthlyDollars,
 			personalHardLimit,
-			summary?.planPoolDollars,
-			summary?.planLimitDollars,
-			plan.includedDollars,
+			onDemandEnabled ? summary?.onDemandLimitDollars : undefined,
 		);
 
 		const usedPercent = summary?.usedPercent !== undefined
