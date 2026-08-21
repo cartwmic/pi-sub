@@ -17,8 +17,9 @@ import type { CoreSettings } from "@marckrenn/pi-sub-shared";
 import type { KeyId } from "@mariozechner/pi-tui";
 import { formatUsageStatus, formatUsageStatusWithWidth } from "./src/formatting.js";
 import type { ContextInfo } from "./src/formatting.js";
-import { formatMetricSet, getDisplayUsage, snapshotsForMetricSet } from "./src/usage/metric-set.js";
-import { metricSetEntriesRequest } from "./src/usage/metric-set-fetch.js";
+import { formatMetricSetLines, getDisplayUsage, snapshotsForMetricSet } from "./src/usage/metric-set.js";
+import { metricSetEntriesRequest, metricSetNeedsRefresh } from "./src/usage/metric-set-fetch.js";
+import { mergeUsageEntries } from "./src/usage/entries.js";
 import { clearSettingsCache, loadSettings, saveSettings, SETTINGS_PATH } from "./src/settings.js";
 import { showSettingsUI } from "./src/settings-ui.js";
 import { decodeDisplayShareString } from "./src/share.js";
@@ -136,6 +137,7 @@ export default function createExtension(pi: ExtensionAPI) {
 	let coreAvailable = false;
 	let coreSettings: CoreSettings = getFallbackCoreSettings(settings);
 	let fetchFailureTimer: NodeJS.Timeout | undefined;
+	let metricSetFetchInFlight = false;
 	const antigravityHiddenModels = new Set(["tab_flash_lite_preview"]);
 	let settingsWatcher: fs.FSWatcher | undefined;
 	let settingsPoll: NodeJS.Timeout | undefined;
@@ -502,10 +504,14 @@ export default function createExtension(pi: ExtensionAPI) {
 			? { tokens: ctxUsage.tokens, contextWindow: ctxUsage.contextWindow, percent: ctxUsage.percent }
 			: undefined;
 
+		const metricLines = !message && settings.metricSet.length > 0
+			? formatMetricSetLines(theme, settings.metricSet, snapshotsForMetricSet(usageEntries, usage), settings, modelInfo)
+			: undefined;
+
 		const formatted = message
 			? applyBaseTextColor(theme, baseTextColor, message)
-			: settings.metricSet.length > 0
-				? formatMetricSet(theme, settings.metricSet, snapshotsForMetricSet(usageEntries, usage), settings, modelInfo)
+			: metricLines
+				? undefined
 				: (!usage)
 					? undefined
 					: (hasFill || wantsSplit)
@@ -522,7 +528,10 @@ export default function createExtension(pi: ExtensionAPI) {
 		};
 
 		let lines: string[] = [];
-		if (!formatted) {
+		if (metricLines) {
+			// Metric-set layout is remaining + time. Truncate each row; do not wrap to a third.
+			lines = metricLines.map((line) => alignLine(truncateToWidth(line, innerWidth, theme.fg("dim", "..."))));
+		} else if (!formatted) {
 			lines = [];
 		} else if (overflow === "wrap") {
 			lines = wrapTextWithAnsi(formatted, innerWidth).map(alignLine);
@@ -736,13 +745,8 @@ export default function createExtension(pi: ExtensionAPI) {
 
 	function updateEntries(entries: ProviderUsageEntry[] | undefined): void {
 		if (!entries) return;
-		const next: Partial<Record<ProviderName, UsageSnapshot>> = {};
-		for (const entry of entries) {
-			if (!entry.usage) continue;
-			next[entry.provider] = entry.usage;
-		}
-		usageEntries = next;
-		syncAntigravityModels(next.antigravity);
+		usageEntries = mergeUsageEntries(usageEntries, entries);
+		syncAntigravityModels(usageEntries.antigravity);
 		updateFetchFailureTicker();
 	}
 
@@ -894,12 +898,18 @@ export default function createExtension(pi: ExtensionAPI) {
 	async function ensureMetricSetEntries(): Promise<void> {
 		const request = metricSetEntriesRequest(settings.metricSet.length);
 		if (!request) return;
-		const missing = settings.metricSet.some((item) => !usageEntries[item.provider]);
-		if (!missing) return;
-		const entries = await requestCoreEntries(request.timeoutMs, request.force);
-		updateEntries(entries);
-		if (lastContext) {
-			renderCurrent(lastContext);
+		const ttlMs = Math.max(0, (settings.behavior.refreshInterval ?? 60) * 1000);
+		if (!metricSetNeedsRefresh(settings.metricSet, usageEntries, Date.now(), ttlMs)) return;
+		if (metricSetFetchInFlight) return;
+		metricSetFetchInFlight = true;
+		try {
+			const entries = await requestCoreEntries(request.timeoutMs, request.force);
+			updateEntries(entries);
+			if (lastContext) {
+				renderCurrent(lastContext);
+			}
+		} finally {
+			metricSetFetchInFlight = false;
 		}
 	}
 

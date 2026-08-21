@@ -1,13 +1,19 @@
 /**
  * Metric-set display: ordered remaining-or-spend numbers, independent of model/pin.
+ *
+ * Nonempty metricSet renders at most two rows:
+ *   left  <name remaining>  │  <name remaining>
+ *   time  <name reset>      │  <name reset>
+ * Provider names stay on both rows. A 4-column prefix names the row.
  */
 
 import type { Theme } from "@mariozechner/pi-coding-agent";
+import { visibleWidth } from "@mariozechner/pi-tui";
 import type { MetricSetItem, MetricUnit, Settings } from "../settings-types.js";
 import { resolveDividerColor } from "../settings-types.js";
 import type { ProviderName, RateWindow, UsageSnapshot } from "../types.js";
 import { isExpectedMissingData } from "../errors.js";
-import { formatUsageWindow } from "../formatting.js";
+import { formatUsageWindowParts } from "../formatting.js";
 import { shouldShowWindow } from "../providers/windows.js";
 
 export type UsageEntryMap = Partial<Record<ProviderName, UsageSnapshot>>;
@@ -22,7 +28,13 @@ type PreparedMetricWindow = {
 	window: RateWindow;
 	invertUsage: boolean;
 	usage: UsageSnapshot;
+	unit: MetricUnit;
 };
+
+const REMAINING_PREFIX = "left";
+const SPEND_PREFIX = "used";
+const MIXED_PREFIX = "use";
+const TIME_PREFIX = "time";
 
 function formatDollars(amount: number): string {
 	return `$${amount.toFixed(2)}`;
@@ -105,6 +117,11 @@ function usageDivider(theme: Theme, settings?: Settings): string {
 	return charToDisplay ? spacing + theme.fg(dividerColor, charToDisplay) + spacing : spacing + spacing;
 }
 
+function padVisible(text: string, width: number): string {
+	const extra = width - visibleWidth(text);
+	return extra > 0 ? `${text}${" ".repeat(extra)}` : text;
+}
+
 /**
  * Empty metricSet display source: pinned provider snapshot, else selected-model currentUsage.
  */
@@ -137,7 +154,6 @@ function prepareMetricSetItem(
 ): PreparedMetricWindow[] | undefined {
 	if (!snapshot) return undefined;
 	if (!snapshotHasCredentials(snapshot)) return undefined;
-	if (snapshot.error) return undefined;
 
 	const visible = snapshot.windows.filter((window) => shouldShowWindow(snapshot, window, settings));
 	if (visible.length === 0) return undefined;
@@ -166,7 +182,7 @@ function prepareMetricSetItem(
 			capAmount,
 			label,
 		};
-		return [{ window, invertUsage, usage: snapshot }];
+		return [{ window, invertUsage, usage: snapshot, unit }];
 	}
 
 	// Percent must not inherit spend titles from the provider or a stale cache.
@@ -174,34 +190,126 @@ function prepareMetricSetItem(
 		window: isCursor ? { ...window, label: "" } : window,
 		invertUsage,
 		usage: snapshot,
+		unit,
 	}));
 }
 
+function isDollarLabel(label: string): boolean {
+	return /^\$/.test(label.trim());
+}
+
+function compactWindowParts(
+	theme: Theme,
+	entry: PreparedMetricWindow,
+	settings: Settings,
+) {
+	const dollarLabel = entry.unit === "dollars" && isDollarLabel(entry.window.label);
+	return formatUsageWindowParts(
+		theme,
+		entry.window,
+		entry.invertUsage,
+		{
+			...settings,
+			display: {
+				...settings.display,
+				barStyle: "percentage",
+				showWindowTitle: dollarLabel,
+				showUsageLabels: false,
+				resetTimePosition: "back",
+				resetTimeContainment: "none",
+			},
+		},
+		entry.usage,
+	);
+}
+
+type MetricColumn = {
+	name: string;
+	remaining: string;
+	time: string;
+	display: MetricSetItem["display"];
+};
+
+function collectMetricColumns(
+	theme: Theme,
+	metricSet: MetricSetItem[],
+	snapshots: UsageEntryMap,
+	settings: Settings,
+): MetricColumn[] {
+	const columns: MetricColumn[] = [];
+	for (const item of metricSet) {
+		const prepared = prepareMetricSetItem(item, snapshots[item.provider], settings);
+		if (!prepared) continue;
+		const name = metricSetProviderLabel(prepared[0]?.usage ?? snapshots[item.provider]!);
+		const remainingBits: string[] = [];
+		const timeBits: string[] = [];
+		for (const entry of prepared) {
+			const parts = compactWindowParts(theme, entry, settings);
+			const dollarLabel = entry.unit === "dollars" && isDollarLabel(entry.window.label);
+			const remaining = dollarLabel && parts.label ? parts.label : parts.pct;
+			if (remaining) remainingBits.push(remaining);
+			if (parts.reset) timeBits.push(parts.reset);
+		}
+		if (remainingBits.length === 0) continue;
+		columns.push({
+			name,
+			remaining: `${name} ${remainingBits.join("/")}`,
+			time: `${name} ${timeBits.length > 0 ? timeBits.join("/") : "—"}`,
+			display: item.display,
+		});
+	}
+	return columns;
+}
+
+function usageRowPrefix(columns: MetricColumn[]): string {
+	const kinds = new Set(columns.map((column) => column.display));
+	if (kinds.size > 1) return MIXED_PREFIX;
+	if (kinds.has("spend")) return SPEND_PREFIX;
+	return REMAINING_PREFIX;
+}
+
 /**
- * Render a nonempty metricSet as concatenated formatUsageWindow fragments.
+ * Two-row metric-set layout. Row 1 is remaining/spend, row 2 is reset time.
+ * A short prefix column labels each row. Provider names stay on both rows.
+ * Never returns more than two lines.
+ */
+export function formatMetricSetLines(
+	theme: Theme,
+	metricSet: MetricSetItem[],
+	snapshots: UsageEntryMap,
+	settings: Settings,
+	_model?: { provider?: string; id?: string },
+): string[] | undefined {
+	if (metricSet.length === 0) return undefined;
+	const columns = collectMetricColumns(theme, metricSet, snapshots, settings);
+	if (columns.length === 0) return undefined;
+
+	const remainingPrefix = usageRowPrefix(columns);
+	const prefixWidth = Math.max(visibleWidth(remainingPrefix), visibleWidth(TIME_PREFIX));
+	const divider = usageDivider(theme, settings);
+	const widths = columns.map((column) => Math.max(visibleWidth(column.remaining), visibleWidth(column.time)));
+
+	const remainingRow = `${theme.fg("dim", padVisible(remainingPrefix, prefixWidth))} ${columns
+		.map((column, index) => padVisible(column.remaining, widths[index] ?? 0))
+		.join(divider)}`;
+	const timeRow = `${theme.fg("dim", padVisible(TIME_PREFIX, prefixWidth))} ${columns
+		.map((column, index) => padVisible(column.time, widths[index] ?? 0))
+		.join(divider)}`;
+	return [remainingRow, timeRow];
+}
+
+/**
+ * Render a nonempty metricSet as two newline-joined rows (remaining, then time).
  * Membership follows list order only. Unusable items are omitted.
- * Each fragment is prefixed with its subscription name.
+ * Each column is prefixed with its subscription name.
  */
 export function formatMetricSet(
 	theme: Theme,
 	metricSet: MetricSetItem[],
 	snapshots: UsageEntryMap,
 	settings: Settings,
-	_model?: { provider?: string; id?: string },
+	model?: { provider?: string; id?: string },
 ): string | undefined {
-	if (metricSet.length === 0) return undefined;
-
-	const parts: string[] = [];
-	for (const item of metricSet) {
-		const prepared = prepareMetricSetItem(item, snapshots[item.provider], settings);
-		if (!prepared) continue;
-		const name = metricSetProviderLabel(prepared[0]?.usage ?? snapshots[item.provider]!);
-		for (const entry of prepared) {
-			const formatted = formatUsageWindow(theme, entry.window, entry.invertUsage, settings, entry.usage);
-			parts.push(name ? `${name} ${formatted}` : formatted);
-		}
-	}
-
-	if (parts.length === 0) return undefined;
-	return parts.join(usageDivider(theme, settings));
+	const lines = formatMetricSetLines(theme, metricSet, snapshots, settings, model);
+	return lines?.join("\n");
 }

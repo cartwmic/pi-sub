@@ -7,7 +7,7 @@ import { shouldShowWindow } from "../src/providers/windows.js";
 import { getDefaultSettings } from "../src/settings-types.js";
 import type { MetricSetItem } from "../src/settings-types.js";
 import type { UsageSnapshot } from "../src/types.js";
-import { formatMetricSet, getDisplayUsage, metricSetProviderLabel, metricSetUnit } from "../src/usage/metric-set.js";
+import { formatMetricSet, formatMetricSetLines, getDisplayUsage, metricSetProviderLabel, metricSetUnit } from "../src/usage/metric-set.js";
 
 const theme = {
 	fg: (_color: string, text: string) => text,
@@ -498,15 +498,17 @@ function metricSetSettings(metricSet: MetricSetItem[]) {
 
 function assertCompositeRemaining(output: string | undefined): void {
 	assert.ok(output);
+	assert.ok(output.includes("left"));
+	assert.ok(output.includes("time"));
 	assert.ok(output.includes("Cursor"));
 	assert.ok(output.includes("Claude"));
 	assert.ok(output.includes("Codex"));
 	assert.ok(output.includes("$75.00"));
-	assert.ok(output.includes("75% rem."));
-	assert.ok(output.includes("90% rem."));
-	assert.ok(output.includes("60% rem."));
+	assert.ok(output.includes("90%"));
+	assert.ok(output.includes("60%"));
 	assert.equal(output.includes("Pro"), false);
 	assert.equal(output.includes("Gemini"), false);
+	assert.equal(output.includes(" rem."), false);
 }
 
 test("nonempty metricSet still shows Cursor+anthropic+codex when selected model is none of them", () => {
@@ -554,9 +556,9 @@ test("one NO_CREDENTIALS item omits only that item", () => {
 	assert.ok(output.includes("Cursor"));
 	assert.ok(output.includes("Codex"));
 	assert.ok(output.includes("$75.00"));
-	assert.ok(output.includes("60% rem."));
+	assert.ok(output.includes("60%"));
 	assert.equal(output.includes("Claude"), false);
-	assert.equal(output.includes("90% rem."), false);
+	assert.equal(output.includes("90%"), false);
 	assert.equal(output.includes("No creds"), false);
 	assert.equal(output.includes("No credentials"), false);
 	assert.equal(output.includes("NO_CREDENTIALS"), false);
@@ -571,11 +573,11 @@ test("cursor remaining without cap uses subscription percent even when API capAm
 	};
 	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
 	assert.ok(output);
-	assert.ok(output.includes("Cursor 34% rem."));
+	assert.ok(output.includes("Cursor 34%"));
 	assert.ok(output.includes("Claude"));
-	assert.ok(output.includes("90% rem."));
+	assert.ok(output.includes("90%"));
 	assert.ok(output.includes("Codex"));
-	assert.ok(output.includes("60% rem."));
+	assert.ok(output.includes("60%"));
 	assert.equal(output.includes("$75.00"), false);
 	assert.equal(output.includes("$25.00"), false);
 	assert.equal(output.includes("$100.00"), false);
@@ -603,7 +605,7 @@ test("cursor remaining percent strips leftover dollar labels from the provider w
 	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
 	assert.ok(output);
 	assert.ok(output.includes("Cursor"));
-	assert.ok(output.includes("34% rem."));
+	assert.ok(output.includes("34%"));
 	assert.ok(output.includes("Claude"));
 	assert.equal(output.includes("$610.50"), false);
 	assert.equal(output.includes("$139.50"), false);
@@ -623,7 +625,7 @@ test("cursor remaining dollars uses API capAmount when metricSet has no cap", ()
 	);
 	assert.ok(output);
 	assert.ok(output.includes("Cursor $75.00"));
-	assert.ok(output.includes("75% rem."));
+	assert.equal(output.includes("75% rem."), false);
 	assert.ok(output.includes("Claude"));
 });
 
@@ -640,7 +642,7 @@ test("cursor spend uses API capAmount when metricSet has no cap", () => {
 	);
 	assert.ok(output);
 	assert.ok(output.includes("Cursor $25.00/$100.00"));
-	assert.ok(output.includes("25% used"));
+	assert.equal(output.includes("25% used"), false);
 	assert.ok(output.includes("Claude"));
 });
 
@@ -686,14 +688,13 @@ test("cursor spend uses used/cap percent and $used/$cap label", () => {
 	assert.ok(output);
 	assert.ok(output.includes("Cursor"));
 	assert.ok(output.includes("$25.00/$100.00"));
-	assert.ok(output.includes("25% used"));
+	assert.match(output, /^use /);
 	assert.ok(output.includes("Claude"));
-	assert.ok(output.includes("10% used"));
+	assert.ok(output.includes("10%"));
 	assert.ok(output.includes("Codex"));
-	assert.ok(output.includes("60% rem."));
+	assert.ok(output.includes("60%"));
 	assert.equal(output.includes("$75.00"), false);
-	assert.equal(output.includes("75% rem."), false);
-	assert.equal(output.includes("90% rem."), false);
+	assert.equal(output.includes(" rem."), false);
 });
 
 test("membership follows metricSet list order, not model or pin", () => {
@@ -713,11 +714,11 @@ test("membership follows metricSet list order, not model or pin", () => {
 	const cursorAt = output.indexOf("Cursor");
 	assert.ok(codexAt >= 0 && cursorAt > codexAt);
 	assert.ok(output.includes("$75.00"));
-	assert.equal(output.includes("90% rem."), false);
+	assert.equal(output.includes("90%"), false);
 	assert.equal(output.includes("Pro"), false);
 });
 
-test("snapshot.error omits only that item", () => {
+test("transient snapshot.error still shows last windows", () => {
 	const settings = metricSetSettings(remainingSet(100));
 	const snapshots = {
 		cursor: cursorSnapshot(),
@@ -730,8 +731,29 @@ test("snapshot.error omits only that item", () => {
 	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
 	assert.ok(output);
 	assert.ok(output.includes("$75.00"));
-	assert.ok(output.includes("60% rem."));
-	assert.equal(output.includes("90% rem."), false);
+	assert.ok(output.includes("Claude"));
+	assert.ok(output.includes("90%"));
+	assert.ok(output.includes("60%"));
+	assert.equal(output.includes("Fetch failed"), false);
+});
+
+test("snapshot.error without windows omits only that item", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: cursorSnapshot(),
+		anthropic: {
+			...anthropicSnapshot(),
+			windows: [],
+			error: { code: "FETCH_FAILED" as const, message: "Fetch failed" },
+		},
+		codex: codexSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("$75.00"));
+	assert.ok(output.includes("60%"));
+	assert.equal(output.includes("Claude"), false);
+	assert.equal(output.includes("90%"), false);
 	assert.equal(output.includes("Fetch failed"), false);
 });
 
@@ -768,9 +790,9 @@ test("cursor non-finite usedAmount omits only cursor", () => {
 	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
 	assert.ok(output);
 	assert.ok(output.includes("Claude"));
-	assert.ok(output.includes("90% rem."));
+	assert.ok(output.includes("90%"));
 	assert.ok(output.includes("Codex"));
-	assert.ok(output.includes("60% rem."));
+	assert.ok(output.includes("60%"));
 	assert.equal(output.includes("Cursor"), false);
 	assert.equal(output.includes("$75.00"), false);
 	assert.equal(output.includes("$25.00"), false);
@@ -786,8 +808,8 @@ test("hidden windows omit only that item", () => {
 		settings,
 	);
 	assert.ok(output);
-	assert.ok(output.includes("90% rem."));
-	assert.ok(output.includes("60% rem."));
+	assert.ok(output.includes("90%"));
+	assert.ok(output.includes("60%"));
 	assert.equal(output.includes("$75.00"), false);
 });
 
@@ -820,4 +842,48 @@ test("metricSetProviderLabel names subscriptions users expect", () => {
 	assert.equal(metricSetProviderLabel(anthropicSnapshot()), "Claude");
 	assert.equal(metricSetProviderLabel(codexSnapshot()), "Codex");
 	assert.equal(metricSetProviderLabel(geminiSnapshot()), "Gemini");
+});
+
+test("metricSet uses two rows for remaining and time with a prefix column", () => {
+	const settings = metricSetSettings([
+		{ provider: "cursor", display: "remaining", unit: "percent" },
+		{ provider: "anthropic", display: "remaining" },
+		{ provider: "codex", display: "remaining" },
+	]);
+	const snapshots = {
+		cursor: {
+			...cursorSnapshot(25, 66),
+			windows: [{ label: "", usedPercent: 66, usedAmount: 25, resetDescription: "26d16h" }],
+		},
+		anthropic: {
+			...anthropicSnapshot(),
+			windows: [
+				{ label: "5h", usedPercent: 10, resetDescription: "4h" },
+				{ label: "Week", usedPercent: 20, resetDescription: "6d" },
+			],
+		},
+		codex: {
+			...codexSnapshot(),
+			windows: [
+				{ label: "5h", usedPercent: 40, resetDescription: "5h" },
+				{ label: "Week", usedPercent: 50, resetDescription: "2d" },
+			],
+		},
+	};
+	const lines = formatMetricSetLines(theme, settings.metricSet, snapshots, settings);
+	assert.ok(lines);
+	assert.equal(lines.length, 2);
+	assert.match(lines[0] ?? "", /^left /);
+	assert.match(lines[1] ?? "", /^time /);
+	assert.ok((lines[0] ?? "").includes("Cursor 34%"));
+	assert.ok((lines[0] ?? "").includes("Claude 90%/80%"));
+	assert.ok((lines[0] ?? "").includes("Codex 60%/50%"));
+	assert.ok((lines[1] ?? "").includes("Cursor 26d16h"));
+	assert.ok((lines[1] ?? "").includes("Claude 4h/6d"));
+	assert.ok((lines[1] ?? "").includes("Codex 5h/2d"));
+	assert.equal((lines[0] ?? "").indexOf("Cursor"), (lines[1] ?? "").indexOf("Cursor"));
+	assert.equal((lines[0] ?? "").indexOf("Claude"), (lines[1] ?? "").indexOf("Claude"));
+	assert.equal((lines[0] ?? "").indexOf("Codex"), (lines[1] ?? "").indexOf("Codex"));
+	assert.ok(visibleWidth(lines[0] ?? "") < 80);
+	assert.ok(visibleWidth(lines[1] ?? "") < 80);
 });
