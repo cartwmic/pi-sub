@@ -2,7 +2,8 @@
  * Cursor usage provider
  *
  * Subscription percent comes from GET /api/usage-summary
- * (`individualUsage.plan.totalPercentUsed`). Spend dollars come from team
+ * (`individualUsage.plan.autoPercentUsed`, first-party Auto/Composer/Grok).
+ * Blended `totalPercentUsed` is only a fallback. Spend dollars come from team
  * spend, on-demand usage, or GetAggregatedUsageEvents. The spend cap is a
  * usage-based/team limit from Cursor's dashboard APIs (hard-limit, team
  * override/monthly, on-demand limit) — never the included subscription pool
@@ -42,6 +43,8 @@ type UsageSummaryResponse = {
 			used?: number | string;
 			limit?: number | string;
 			remaining?: number | string;
+			autoPercentUsed?: number | string;
+			apiPercentUsed?: number | string;
 			totalPercentUsed?: number | string;
 			breakdown?: {
 				included?: number | string;
@@ -241,7 +244,7 @@ async function fetchUsageSummary(
 	const plan = data.individualUsage?.plan;
 	const onDemand = data.individualUsage?.onDemand;
 	return {
-		usedPercent: toFiniteNumber(plan?.totalPercentUsed),
+		usedPercent: toFiniteNumber(plan?.autoPercentUsed) ?? toFiniteNumber(plan?.totalPercentUsed),
 		billingCycleStart: parseTimestamp(data.billingCycleStart),
 		billingCycleEnd: parseTimestamp(data.billingCycleEnd),
 		onDemandEnabled: onDemand?.enabled === true,

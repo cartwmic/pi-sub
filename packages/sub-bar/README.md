@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/d61d82f6-afd0-45fc-82f3-69910543aa7a
 | Google Gemini | Pro/Flash quotas | ✅ |
 | Antigravity | Model quotas | ✅ |
 | OpenAI Codex | Primary/secondary windows | ✅ |
-| Cursor | Cycle percent (usage-summary) and spend vs API cap | - |
+| Cursor | First-party Auto percent (usage-summary) and spend vs API cap | - |
 | AWS Kiro | Credits | - |
 | z.ai | Tokens/monthly limits | - |
 
@@ -124,7 +124,7 @@ Display and provider UI settings are stored in `~/.pi/agent/pi-sub-bar-settings.
 
 `metricSet` is an ordered list of `{ provider, display, unit?, cap? }` entries in `pi-sub-bar-settings.json`. Each item names a subscription provider, whether to show `remaining` or `spend`, an optional `percent`/`dollars` unit, and an optional positive numeric cap override. Remaining defaults to percent; spend defaults to dollars. A configured `cap` without `unit` keeps the dollars path. Membership, remaining-versus-spend, units, and cap overrides live only in this field. An empty list (the source default) keeps the existing model-follow / single-pin display. Missing or non-array `metricSet` values fall back to `[]`. Invalid items are dropped on load; `cap` is kept only when it is a finite number greater than 0; `unit` is kept only when it is `percent` or `dollars`.
 
-When `metricSet` is nonempty, the widget force-fetches those providers on start (UI and headless) and renders at most two rows: remaining/spend on the first row, reset time on the second. A 4-column prefix (`left` / `time`, or `used`/`use` when spend is in the set) labels the rows. Each column keeps the subscription name (Cursor, Claude, Codex, …). Multiple windows for one provider are grouped (`94%/28%` and `4h/6d`). Selected model and `pinnedProvider` do not choose membership. An item is omitted (siblings still render) when it has no snapshot, expected missing credentials, no usable windows after that provider's window flags, or — for Cursor dollars — a missing positive cap (`metricSet.cap` or API `capAmount`) or non-finite `usedAmount`. Transient fetch errors keep last-good windows when they are present. Cursor remaining percent uses the provider window's `usedPercent` and does not need a cap. The widget is blank only when every item is omitted; missing-auth items do not show a persistent error chip.
+When `metricSet` is nonempty, the widget force-fetches those providers on start (UI and headless) and renders at most two rows: remaining/spend on the first row, reset time on the second. A 4-column prefix (`left` / `time`, or `used`/`use` when spend is in the set) labels the rows. Each column keeps the subscription name (Cursor, Claude, Codex, …). Multiple windows for one provider are grouped (`94%/28%` and `4h/6d`). Selected model and `pinnedProvider` do not choose membership. An item is omitted (siblings still render) when it has no snapshot, expected missing credentials, no usable windows after that provider's window flags, or — for Cursor dollars — a missing positive cap (`metricSet.cap` or API `capAmount`) or non-finite `usedAmount`. Transient fetch errors keep last-good windows when they are present. Cursor remaining percent uses first-party Auto usage (`autoPercentUsed`) and does not need a cap. The widget is blank only when every item is omitted; missing-auth items do not show a persistent error chip.
 
 ### Provider UI Settings
 

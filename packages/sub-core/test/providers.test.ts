@@ -431,6 +431,8 @@ test("cursor fetch maps usage-summary percent and spend without treating the inc
 					billingCycleEnd: cycleEnd.toISOString(),
 					individualUsage: {
 						plan: {
+							autoPercentUsed: 77.635,
+							apiPercentUsed: 0.24,
 							totalPercentUsed: 66.42,
 							used: 7000,
 							limit: 7000,
@@ -465,7 +467,7 @@ test("cursor fetch maps usage-summary percent and spend without treating the inc
 	const usage = await provider.fetchUsage(deps);
 	assert.equal(usage.windows.length, 1);
 	assert.equal(usage.windows[0]?.usedAmount, 12.34);
-	assert.equal(usage.windows[0]?.usedPercent, 66.42);
+	assert.equal(usage.windows[0]?.usedPercent, 77.635);
 	assert.equal(usage.windows[0]?.capAmount, undefined);
 	assert.equal(usage.windows[0]?.label, "");
 	assert.equal(usage.windows[0]?.resetAt, cycleEnd.toISOString());
@@ -496,6 +498,40 @@ test("cursor fetch maps usage-summary percent and spend without treating the inc
 	const usageBody = JSON.parse(String(usageCall?.init.body));
 	assert.equal(usageBody.endDate, cycleEnd.getTime());
 	assert.equal(usageBody.startDate, cycleStart.getTime());
+});
+
+test("cursor remaining percent prefers first-party autoPercentUsed over blended total", async () => {
+	const provider = new CursorProvider();
+	const token = cursorAccessToken("user-1");
+	const { deps, files } = createDeps({
+		fetch: async (url) => {
+			const href = String(url);
+			if (href === "https://cursor.com/api/usage-summary") {
+				return createJsonResponse({
+					individualUsage: {
+						plan: { autoPercentUsed: 77.635, apiPercentUsed: 0.24, totalPercentUsed: 68.28 },
+					},
+				});
+			}
+			if (href === "https://cursor.com/api/dashboard/get-plan-info") {
+				return createJsonResponse({ planInfo: { includedAmountCents: 7000 } });
+			}
+			if (href === "https://cursor.com/api/dashboard/get-hard-limit") {
+				return createJsonResponse({ noUsageBasedAllowed: true });
+			}
+			if (href === "https://cursor.com/api/dashboard/teams") {
+				return createJsonResponse({});
+			}
+			if (href === "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents") {
+				return createJsonResponse({ totalCostCents: 0 });
+			}
+			throw new Error(`unexpected url ${href}`);
+		},
+	});
+	withAuth(files, { cursor: { access: token } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.windows[0]?.usedPercent, 77.635);
 });
 
 test("cursor fetch prefers team/hard-limit dollars over the included pool", async () => {

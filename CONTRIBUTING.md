@@ -48,7 +48,7 @@ Update both **sub-core** (fetch) and **sub-bar** (display). Current fetchers liv
 
 `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
 
-Append the name to `PROVIDERS` in `packages/sub-shared/index.ts`. Cursor remaining percent uses the provider `usedPercent` and needs no cap. Cursor dollars remaining/spend use a positive `metricSet` cap when present, otherwise the provider API `capAmount`. Do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
+Append the name to `PROVIDERS` in `packages/sub-shared/index.ts`. Cursor remaining percent uses first-party Auto usage (`autoPercentUsed`) and needs no cap. Cursor dollars remaining/spend use a positive `metricSet` cap when present, otherwise the provider API `capAmount`. Do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
 
 See the root README “Adding a Provider (summary)” for the full checklist.
 
