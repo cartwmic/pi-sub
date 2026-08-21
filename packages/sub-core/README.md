@@ -127,16 +127,16 @@ You need to update both **sub-core** (fetch layer) and **sub-bar** (display laye
 See the root README “Developer guide” for the decision checklist and examples.
 
 #### sub-core (fetch + status)
-1. Add provider name to `src/types.ts` (`PROVIDERS`, `ProviderName`).
+1. Add provider name to `PROVIDERS` in `packages/sub-shared/index.ts` (`ProviderName`; re-exported from `src/types.ts`).
 2. Implement fetcher in `src/providers/impl/<provider>.ts`.
    Current impl files: `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
-   Cursor remaining/spend read a positive `metricSet` cap from bar settings; do not add a compiled or provider-default cap.
+   Cursor remaining/spend read a positive `metricSet` cap from bar settings; do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
 3. Register provider in `src/providers/registry.ts`.
 4. Add detection + status config in `src/providers/metadata.ts`.
 5. Add provider settings defaults in `src/settings-types.ts`.
 
 #### sub-bar (display + UI)
-1. Add provider name to `src/types.ts`.
+1. The bar re-exports `PROVIDERS` from `packages/sub-shared/index.ts` via `src/types.ts`; do not maintain a second union.
 2. Add display rules + labels in `src/providers/metadata.ts`.
 3. Add window visibility in `src/providers/windows.ts`.
 4. Add extras in `src/providers/extras.ts` (if needed).

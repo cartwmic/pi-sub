@@ -597,3 +597,113 @@ test("empty metricSet still follows model/pin", () => {
 	);
 	assert.equal(formatMetricSet(theme, [], usageEntries, settings), undefined);
 });
+
+test("cursor spend uses used/cap percent and $used/$cap label", () => {
+	const settings = metricSetSettings([
+		{ provider: "cursor", display: "spend", cap: 100 },
+		{ provider: "anthropic", display: "spend" },
+		{ provider: "codex", display: "remaining" },
+	]);
+	const output = formatMetricSet(
+		theme,
+		settings.metricSet,
+		{ cursor: cursorSnapshot(), anthropic: anthropicSnapshot(), codex: codexSnapshot() },
+		settings,
+	);
+	assert.ok(output);
+	assert.ok(output.includes("$25.00/$100.00"));
+	assert.ok(output.includes("25% used"));
+	assert.ok(output.includes("10% used"));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("$75.00"), false);
+	assert.equal(output.includes("75% rem."), false);
+	assert.equal(output.includes("90% rem."), false);
+});
+
+test("membership follows metricSet list order, not model or pin", () => {
+	const settings = metricSetSettings([
+		{ provider: "codex", display: "remaining" },
+		{ provider: "cursor", display: "remaining", cap: 100 },
+	]);
+	const output = formatMetricSet(
+		theme,
+		settings.metricSet,
+		{ cursor: cursorSnapshot(), anthropic: anthropicSnapshot(), codex: codexSnapshot(), gemini: geminiSnapshot() },
+		settings,
+		{ provider: "anthropic", id: "claude-sonnet-4" },
+	);
+	assert.ok(output);
+	const codexAt = output.indexOf("60% rem.");
+	const cursorAt = output.indexOf("$75.00");
+	assert.ok(codexAt >= 0 && cursorAt > codexAt);
+	assert.equal(output.includes("90% rem."), false);
+	assert.equal(output.includes("Pro"), false);
+});
+
+test("snapshot.error omits only that item", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: cursorSnapshot(),
+		anthropic: {
+			...anthropicSnapshot(),
+			error: { code: "FETCH_FAILED" as const, message: "Fetch failed" },
+		},
+		codex: codexSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("$75.00"));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("90% rem."), false);
+	assert.equal(output.includes("Fetch failed"), false);
+});
+
+test("cursor non-finite usedAmount omits only cursor", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: {
+			provider: "cursor" as const,
+			displayName: "Cursor Plan",
+			windows: [{ label: "$25.00", usedPercent: 0, usedAmount: Number.NaN }],
+		},
+		anthropic: anthropicSnapshot(),
+		codex: codexSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("90% rem."));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("$75.00"), false);
+	assert.equal(output.includes("$25.00"), false);
+});
+
+test("hidden windows omit only that item", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	settings.providers.cursor.windows.showCycle = false;
+	const output = formatMetricSet(
+		theme,
+		settings.metricSet,
+		{ cursor: cursorSnapshot(), anthropic: anthropicSnapshot(), codex: codexSnapshot() },
+		settings,
+	);
+	assert.ok(output);
+	assert.ok(output.includes("90% rem."));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("$75.00"), false);
+});
+
+test("blank widget only when every metricSet item is omitted", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: {
+			...cursorSnapshot(),
+			error: { code: "NO_CREDENTIALS" as const, message: "No credentials found" },
+		},
+		anthropic: {
+			...anthropicSnapshot(),
+			error: { code: "NO_CREDENTIALS" as const, message: "No credentials found" },
+		},
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.equal(output, undefined);
+});

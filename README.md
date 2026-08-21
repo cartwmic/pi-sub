@@ -118,23 +118,23 @@ Settings live in the agent directory to survive updates (legacy extension `setti
 - **cache**: `~/.pi/agent/cache/sub-core/cache.json`
 - **lock**: `~/.pi/agent/cache/sub-core/cache.lock`
 
-This fork installs via `https://github.com/cartwmic/pi-sub`. A nonempty `metricSet` in `pi-sub-bar-settings.json` is the always-visible remaining/spend set: an ordered list of `{ provider, display, cap? }` items. Selected model and `pinnedProvider` do not choose membership. An empty `metricSet` (the source default) keeps the existing model-follow / single-pin display. Cursor remaining or spend needs a positive `cap` on that item. There is no compiled personal/work provider list and no compiled cap in this repository.
+This fork installs via `https://github.com/cartwmic/pi-sub`. A nonempty `metricSet` in `pi-sub-bar-settings.json` is the always-visible remaining/spend set: an ordered list of `{ provider, display, cap? }` items. Selected model and `pinnedProvider` do not choose membership. When the set is nonempty, listed providers are force-fetched on start (UI and headless) so a cache of only the selected model does not omit the rest. An empty `metricSet` (the source default) keeps the existing model-follow / single-pin display. Cursor remaining or spend needs a positive `cap` on that item. There is no compiled personal/work provider list and no compiled cap in this repository.
 
 ## Adding a Provider (summary)
 
 You must update **both** sub-core (fetch layer) and sub-bar (display/UI).
 
 ### sub-core
-1. Add provider name to `packages/sub-core/src/types.ts`.
+1. Add provider name to `PROVIDERS` in `packages/sub-shared/index.ts` (re-exported from `packages/sub-core/src/types.ts`).
 2. Implement fetcher in `packages/sub-core/src/providers/impl/<provider>.ts`.
    Current impl files: `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
-   Cursor remaining/spend read a positive `metricSet` cap from settings; do not add a compiled or provider-default cap.
+   Cursor remaining/spend read a positive `metricSet` cap from settings; do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
 3. Register provider in `packages/sub-core/src/providers/registry.ts`.
 4. Add detection + status config in `packages/sub-core/src/providers/metadata.ts`.
 5. Add settings defaults in `packages/sub-core/src/settings-types.ts`.
 
 ### sub-bar
-1. Add provider name to `packages/sub-bar/src/types.ts`.
+1. The bar re-exports `PROVIDERS` from `packages/sub-shared/index.ts` via `packages/sub-bar/src/types.ts`; do not maintain a second union.
 2. Add display metadata in `packages/sub-bar/src/providers/metadata.ts`.
 3. Add window visibility rules in `packages/sub-bar/src/providers/windows.ts`.
 4. Add extras (if needed) in `packages/sub-bar/src/providers/extras.ts`.

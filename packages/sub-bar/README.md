@@ -17,7 +17,8 @@ https://github.com/user-attachments/assets/d61d82f6-afd0-45fc-82f3-69910543aa7a
 ### Features
 
 - Displays realtime usage quotas for multiple AI providers
-- Auto-detects provider from current model (via sub-core)
+- Optional `metricSet` in `pi-sub-bar-settings.json`: a nonempty list is the always-visible remaining/spend set, independent of selected model and pin; empty keeps model-follow / pin
+- Auto-detects provider from current model (via sub-core) when `metricSet` is empty
 - Shows rate limit windows with visual progress bars
 - Status indicators from provider status pages
 - Theme save/share/import and `sub-bar:import` preview flow
@@ -109,7 +110,7 @@ Shortcuts are configurable via `sub-bar:settings` → Keybindings. Enter any val
 
 ## Communication with sub-core
 
-`sub-bar` is a display client. It listens for `sub-core:update-current`/`sub-core:ready` events and renders the widget. On startup it requests the current state via `sub-core:request`.
+`sub-bar` is a display client. It listens for `sub-core:update-current`/`sub-core:ready` events and renders the widget. On startup it requests the current state via `sub-core:request`. When `metricSet` is nonempty, that request force-fetches entries for every listed provider so the composite line is not limited to the selected-model cache.
 
 `sub-bar` manages display settings and UI-only provider options (window visibility, labels, status indicator). Provider enablement lives in sub-core, but the sub-bar settings UI can toggle Enabled (auto/on/off) and forwards changes to `sub-core:settings:patch`. Ordering and refresh behavior are configured in `sub-core:settings`, and sub-core broadcasts updates that sub-bar consumes. The cycle command forwards to `sub-core:action` so core updates provider selection and then broadcasts the new state.
 
@@ -123,7 +124,7 @@ Display and provider UI settings are stored in `~/.pi/agent/pi-sub-bar-settings.
 
 `metricSet` is an ordered list of `{ provider, display, cap? }` entries in `pi-sub-bar-settings.json`. Each item names a subscription provider, whether to show `remaining` or `spend`, and an optional positive numeric cap. Membership, remaining-versus-spend, and caps live only in this field. An empty list (the source default) keeps the existing model-follow / single-pin display. Missing or non-array `metricSet` values fall back to `[]`. Invalid items are dropped on load; `cap` is kept only when it is a finite number greater than 0.
 
-When `metricSet` is nonempty, the widget concatenates compact remaining-or-spend numbers for that ordered list from already-fetched provider snapshots. Selected model and `pinnedProvider` do not choose membership. An item is omitted (siblings still render) when it has no snapshot, a snapshot error, missing credentials, no window left after that provider's window flags, or — for Cursor — a missing positive `cap` or non-finite `usedAmount`. The widget is blank only when every item is omitted; missing-auth items do not show a persistent error chip.
+When `metricSet` is nonempty, the widget force-fetches those providers on start (UI and headless) and concatenates compact remaining-or-spend numbers for that ordered list. Selected model and `pinnedProvider` do not choose membership. An item is omitted (siblings still render) when it has no snapshot, a snapshot error, missing credentials, no window left after that provider's window flags, or — for Cursor — a missing positive `cap` or non-finite `usedAmount`. The widget is blank only when every item is omitted; missing-auth items do not show a persistent error chip.
 
 ### Provider UI Settings
 

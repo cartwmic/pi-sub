@@ -48,7 +48,7 @@ Update both **sub-core** (fetch) and **sub-bar** (display). Current fetchers liv
 
 `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
 
-Cursor remaining/spend need a positive `metricSet` cap in `pi-sub-bar-settings.json`. Do not add a compiled or provider-default cap.
+Append the name to `PROVIDERS` in `packages/sub-shared/index.ts`. Cursor remaining/spend need a positive `metricSet` cap in `pi-sub-bar-settings.json`. Do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
 
 See the root README “Adding a Provider (summary)” for the full checklist.
 
