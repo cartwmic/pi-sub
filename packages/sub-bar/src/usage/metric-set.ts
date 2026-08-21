@@ -3,8 +3,8 @@
  *
  * Nonempty metricSet renders at most two rows:
  *   left  <name remaining>  │  <name remaining>
- *   time  <name reset>      │  <name reset>
- * Provider names stay on both rows. A 4-column prefix names the row.
+ *   time  <reset>           │  <reset>
+ * Provider names stay on the remaining row only. A 4-column prefix names the row.
  */
 
 import type { Theme } from "@mariozechner/pi-coding-agent";
@@ -254,7 +254,7 @@ function collectMetricColumns(
 		columns.push({
 			name,
 			remaining: `${name} ${remainingBits.join("/")}`,
-			time: `${name} ${timeBits.length > 0 ? timeBits.join("/") : "—"}`,
+			time: timeBits.length > 0 ? timeBits.join("/") : "—",
 			display: item.display,
 		});
 	}
@@ -270,7 +270,7 @@ function usageRowPrefix(columns: MetricColumn[]): string {
 
 /**
  * Two-row metric-set layout. Row 1 is remaining/spend, row 2 is reset time.
- * A short prefix column labels each row. Provider names stay on both rows.
+ * A short prefix column labels each row. Provider names stay on the remaining row.
  * Never returns more than two lines.
  */
 export function formatMetricSetLines(
@@ -301,7 +301,8 @@ export function formatMetricSetLines(
 /**
  * Render a nonempty metricSet as two newline-joined rows (remaining, then time).
  * Membership follows list order only. Unusable items are omitted.
- * Each column is prefixed with its subscription name.
+ * Each remaining column is prefixed with its subscription name. The time row
+ * keeps the same columns without repeating those names.
  */
 export function formatMetricSet(
 	theme: Theme,
