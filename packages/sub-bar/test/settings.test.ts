@@ -334,3 +334,56 @@ test("decodeDisplayShareString rejects invalid payloads", () => {
 	const nonObjectPayload = Buffer.from(JSON.stringify(42)).toString("base64url");
 	assert.equal(decodeDisplayShareString(`Name:${nonObjectPayload}`), null);
 });
+
+test("metricSet defaults to an empty list without caps", () => {
+	const settings = getDefaultSettings();
+	assert.deepEqual(settings.metricSet, []);
+	assert.deepEqual(JSON.parse(JSON.stringify(settings)).metricSet, []);
+	assert.ok(!JSON.stringify(settings).includes('"cap"'));
+});
+
+test("mergeSettings treats missing or non-array metricSet as empty and drops invalid items", () => {
+	assert.deepEqual(mergeSettings({}).metricSet, []);
+	assert.deepEqual(mergeSettings({ metricSet: undefined }).metricSet, []);
+	assert.deepEqual(mergeSettings({ metricSet: { provider: "anthropic", display: "remaining" } } as any).metricSet, []);
+
+	const settings = mergeSettings({
+		metricSet: [
+			{ provider: "anthropic", display: "remaining" },
+			{ provider: "not-a-provider", display: "remaining" },
+			{ provider: "codex", display: "percent" },
+			{ provider: "codex" },
+			null,
+			"anthropic",
+			{ provider: "gemini", display: "spend" },
+		],
+	} as any);
+	assert.deepEqual(settings.metricSet, [
+		{ provider: "anthropic", display: "remaining" },
+		{ provider: "gemini", display: "spend" },
+	]);
+});
+
+test("mergeSettings keeps finite positive caps and drops invalid caps", () => {
+	const settings = mergeSettings({
+		metricSet: [
+			{ provider: "anthropic", display: "remaining", cap: 200 },
+			{ provider: "codex", display: "spend", cap: 0 },
+			{ provider: "gemini", display: "remaining", cap: -5 },
+			{ provider: "copilot", display: "spend", cap: Number.POSITIVE_INFINITY },
+			{ provider: "zai", display: "remaining", cap: Number.NaN },
+			{ provider: "kiro", display: "spend", cap: "100" },
+			{ provider: "antigravity", display: "remaining", cap: 0.5 },
+		],
+	} as any);
+	assert.deepEqual(settings.metricSet, [
+		{ provider: "anthropic", display: "remaining", cap: 200 },
+		{ provider: "codex", display: "spend" },
+		{ provider: "gemini", display: "remaining" },
+		{ provider: "copilot", display: "spend" },
+		{ provider: "zai", display: "remaining" },
+		{ provider: "kiro", display: "spend" },
+		{ provider: "antigravity", display: "remaining", cap: 0.5 },
+	]);
+	assert.equal("cap" in settings.metricSet[1], false);
+});

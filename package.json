@@ -3,7 +3,14 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "keywords": ["pi-package"],
   "workspaces": ["packages/*"],
+  "pi": {
+    "extensions": [
+      "./packages/sub-bar/index.ts",
+      "./packages/sub-core/index.ts"
+    ]
+  },
   "scripts": {
     "clean": "npm run clean --workspaces --if-present",
     "check": "npm run check --workspaces --if-present",

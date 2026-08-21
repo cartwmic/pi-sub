@@ -2,7 +2,7 @@
  * Shared types and metadata for sub-* extensions.
  */
 
-export const PROVIDERS = ["anthropic", "copilot", "gemini", "antigravity", "codex", "kiro", "zai"] as const;
+export const PROVIDERS = ["anthropic", "copilot", "gemini", "antigravity", "codex", "kiro", "zai", "cursor"] as const;
 
 export type ProviderName = (typeof PROVIDERS)[number];
 
@@ -16,6 +16,8 @@ export interface ProviderStatus {
 export interface RateWindow {
 	label: string;
 	usedPercent: number;
+	/** Spend amount in USD dollars when the window reports currency instead of a native percent. */
+	usedAmount?: number;
 	resetDescription?: string;
 	resetAt?: string;
 }
@@ -73,6 +75,7 @@ export interface CoreProviderSettingsMap {
 	codex: CoreProviderSettings;
 	kiro: CoreProviderSettings;
 	zai: CoreProviderSettings;
+	cursor: CoreProviderSettings;
 }
 
 export interface BehaviorSettings {
@@ -193,6 +196,10 @@ export const PROVIDER_METADATA: Record<ProviderName, ProviderMetadata> = {
 	zai: {
 		displayName: "z.ai",
 		detection: { providerTokens: ["zai", "z.ai", "xai"], modelTokens: [] },
+	},
+	cursor: {
+		displayName: "Cursor",
+		detection: { providerTokens: ["cursor"], modelTokens: [] },
 	},
 };
 

@@ -37,20 +37,27 @@ If you’d like to work on these, PRs or standalone packages are welcome.
 
 ## Pi package manager
 
-You can install the packages via `pi install`:
+This fork installs as a Pi GitHub package. The packages entry is:
 
-```bash
-pi install npm:@marckrenn/pi-sub-core
-pi install npm:@marckrenn/pi-sub-bar
-pi install npm:@marckrenn/pi-sub-status
+```
+https://github.com/cartwmic/pi-sub
 ```
 
-`sub-bar` remains the default rich UI path. `sub-status` is an explicit opt-in compact client and can be installed alongside `sub-bar` when you want both the widget and a status-line summary.
+Add that URL to `packages` in `~/.pi/agent/settings.json`, or run:
+
+```bash
+pi install https://github.com/cartwmic/pi-sub
+```
+
+A normal Pi GitHub install of this repository loads `sub-bar` and `sub-core` from the root manifest. Workspace package names (`@marckrenn/pi-sub-bar`, `@marckrenn/pi-sub-core`, `@marckrenn/pi-sub-status`, `@marckrenn/pi-sub-shared`) stay as-is.
+
+`sub-bar` remains the default rich UI path. `sub-status` is an explicit opt-in compact client and is not included in the GitHub-package extension list.
+
 
 ## Quick Start (manual install)
 
 ```bash
-git clone https://github.com/marckrenn/pi-sub.git
+git clone https://github.com/cartwmic/pi-sub.git
 
 # Enable the shared core plus one or both display clients
 ln -s /path/to/pi-sub/packages/sub-core   ~/.pi/agent/extensions/sub-core
@@ -111,6 +118,8 @@ Settings live in the agent directory to survive updates (legacy extension `setti
 - **cache**: `~/.pi/agent/cache/sub-core/cache.json`
 - **lock**: `~/.pi/agent/cache/sub-core/cache.lock`
 
+This fork installs via `https://github.com/cartwmic/pi-sub`. A nonempty `metricSet` in `pi-sub-bar-settings.json` is the always-visible remaining/spend set: an ordered list of `{ provider, display, cap? }` items. Selected model and `pinnedProvider` do not choose membership. An empty `metricSet` (the source default) keeps the existing model-follow / single-pin display. Cursor remaining or spend needs a positive `cap` on that item. There is no compiled personal/work provider list and no compiled cap in this repository.
+
 ## Adding a Provider (summary)
 
 You must update **both** sub-core (fetch layer) and sub-bar (display/UI).
@@ -118,6 +127,8 @@ You must update **both** sub-core (fetch layer) and sub-bar (display/UI).
 ### sub-core
 1. Add provider name to `packages/sub-core/src/types.ts`.
 2. Implement fetcher in `packages/sub-core/src/providers/impl/<provider>.ts`.
+   Current impl files: `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
+   Cursor remaining/spend read a positive `metricSet` cap from settings; do not add a compiled or provider-default cap.
 3. Register provider in `packages/sub-core/src/providers/registry.ts`.
 4. Add detection + status config in `packages/sub-core/src/providers/metadata.ts`.
 5. Add settings defaults in `packages/sub-core/src/settings-types.ts`.

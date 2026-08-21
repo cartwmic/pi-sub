@@ -14,6 +14,7 @@ import type {
 	CodexProviderSettings,
 	KiroProviderSettings,
 	ZaiProviderSettings,
+	CursorProviderSettings,
 } from "../settings-types.js";
 
 function buildBaseProviderItems(ps: BaseProviderSettings): SettingItem[] {
@@ -225,6 +226,17 @@ export function buildProviderSettingsItems(settings: Settings, provider: Provide
 		);
 	}
 
+	if (provider === "cursor") {
+		const cursorSettings = ps as CursorProviderSettings;
+		items.push({
+			id: "showCycle",
+			label: "Show Cycle Window",
+			currentValue: cursorSettings.windows.showCycle ? "on" : "off",
+			values: ["on", "off"],
+			description: "Show the billing-cycle usage window.",
+		});
+	}
+
 	return items;
 }
 
@@ -351,6 +363,15 @@ export function applyProviderSettingsChange(
 				break;
 			case "showMonthly":
 				zaiSettings.windows.showMonthly = value === "on";
+				break;
+		}
+	}
+
+	if (provider === "cursor") {
+		const cursorSettings = ps as CursorProviderSettings;
+		switch (id) {
+			case "showCycle":
+				cursorSettings.windows.showCycle = value === "on";
 				break;
 		}
 	}

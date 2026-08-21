@@ -7,6 +7,7 @@ import { AntigravityProvider } from "../src/providers/impl/antigravity.js";
 import { CodexProvider } from "../src/providers/impl/codex.js";
 import { KiroProvider } from "../src/providers/impl/kiro.js";
 import { ZaiProvider } from "../src/providers/impl/zai.js";
+import { CursorProvider } from "../src/providers/impl/cursor.js";
 import { createDeps, createJsonResponse, getAuthPath } from "./helpers.js";
 import type { UsageSnapshot } from "../src/types.js";
 
@@ -382,4 +383,80 @@ test("zai reports api errors and parses limits", async () => {
 	const usage = await provider.fetchUsage(okDeps);
 	assertWindow(usage, "Tokens");
 	assertWindow(usage, "Monthly");
+});
+
+function cursorAccessToken(sub = "user-1"): string {
+	const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url");
+	const payload = Buffer.from(JSON.stringify({ sub })).toString("base64url");
+	return `${header}.${payload}.sig`;
+}
+
+test("cursor has credentials only from nonempty auth.json cursor.access", () => {
+	const provider = new CursorProvider();
+	const { deps, files } = createDeps();
+	assert.equal(provider.hasCredentials(deps), false);
+
+	withAuth(files, { cursor: { access: "   " } }, deps.homedir());
+	assert.equal(provider.hasCredentials(deps), false);
+
+	withAuth(files, { anthropic: { access: "other" } }, deps.homedir());
+	assert.equal(provider.hasCredentials(deps), false);
+
+	withAuth(files, { cursor: { access: "cursor-token" } }, deps.homedir());
+	assert.equal(provider.hasCredentials(deps), true);
+});
+
+test("cursor fetchUsage reports no credentials without auth.json cursor.access", async () => {
+	const provider = new CursorProvider();
+	const { deps } = createDeps();
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.error?.code, "NO_CREDENTIALS");
+	assert.equal(usage.windows.length, 0);
+});
+
+test("cursor fetch maps cents and cycle end into usedAmount", async () => {
+	const provider = new CursorProvider();
+	const token = cursorAccessToken("user-1");
+	const cycleEnd = new Date("2026-09-15T00:00:00.000Z");
+	const calls: { url: string; init: RequestInit }[] = [];
+
+	const { deps, files } = createDeps({
+		fetch: async (url, init) => {
+			calls.push({ url: String(url), init: init as RequestInit });
+			const href = String(url);
+			if (href === "https://cursor.com/api/dashboard/get-plan-info") {
+				return createJsonResponse({ planInfo: { billingCycleEnd: cycleEnd.toISOString() } });
+			}
+			if (href === "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents") {
+				return createJsonResponse({ totalCostCents: 1234 });
+			}
+			throw new Error(`unexpected url ${href}`);
+		},
+	});
+	withAuth(files, { cursor: { access: token } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.windows.length, 1);
+	assert.equal(usage.windows[0]?.usedAmount, 12.34);
+	assert.equal(usage.windows[0]?.usedPercent, 0);
+	assert.equal(usage.windows[0]?.label, "$12.34");
+	assert.equal(usage.windows[0]?.resetAt, cycleEnd.toISOString());
+	assert.ok(usage.windows[0]?.resetDescription);
+
+	assert.equal(calls.length, 2);
+	assert.equal(calls[0]?.url, "https://cursor.com/api/dashboard/get-plan-info");
+	assert.equal(calls[1]?.url, "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents");
+
+	const planHeaders = calls[0]?.init.headers as Record<string, string>;
+	const usageHeaders = calls[1]?.init.headers as Record<string, string>;
+	assert.equal(planHeaders.Authorization, `Bearer ${token}`);
+	assert.equal(planHeaders.Cookie, `WorkosCursorSessionToken=user-1::${token}`);
+	assert.equal(usageHeaders.Authorization, `Bearer ${token}`);
+	assert.equal(usageHeaders["Connect-Protocol-Version"], "1");
+
+	const usageBody = JSON.parse(String(calls[1]?.init.body));
+	assert.equal(usageBody.endDate, cycleEnd.getTime());
+	const expectedStart = new Date(cycleEnd.getTime());
+	expectedStart.setUTCMonth(expectedStart.getUTCMonth() - 1);
+	assert.equal(usageBody.startDate, expectedStart.getTime());
 });

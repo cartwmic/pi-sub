@@ -17,6 +17,7 @@ import type { CoreSettings } from "@marckrenn/pi-sub-shared";
 import type { KeyId } from "@mariozechner/pi-tui";
 import { formatUsageStatus, formatUsageStatusWithWidth } from "./src/formatting.js";
 import type { ContextInfo } from "./src/formatting.js";
+import { formatMetricSet, getDisplayUsage, snapshotsForMetricSet } from "./src/usage/metric-set.js";
 import { clearSettingsCache, loadSettings, saveSettings, SETTINGS_PATH } from "./src/settings.js";
 import { showSettingsUI } from "./src/settings-ui.js";
 import { decodeDisplayShareString } from "./src/share.js";
@@ -402,11 +403,12 @@ export default function createExtension(pi: ExtensionAPI) {
 			displayThemes: loaded.displayThemes,
 			displayUserTheme: loaded.displayUserTheme,
 			pinnedProvider: loaded.pinnedProvider,
+			metricSet: loaded.metricSet,
 			keybindings: loaded.keybindings,
 		};
 		coreSettings = getFallbackCoreSettings(settings);
 		updateFetchFailureTicker();
-		void ensurePinnedEntries(settings.pinnedProvider ?? null);
+		void ensurePinnedAndMetricSetEntries();
 		if (lastContext) {
 			renderCurrent(lastContext);
 		}
@@ -501,11 +503,13 @@ export default function createExtension(pi: ExtensionAPI) {
 
 		const formatted = message
 			? applyBaseTextColor(theme, baseTextColor, message)
-			: (!usage)
-				? undefined
-				: (hasFill || wantsSplit)
-					? formatUsageStatusWithWidth(theme, usage, innerWidth, modelInfo, settings, { labelGapFill: wantsSplit }, contextInfo)
-					: formatUsageStatus(theme, usage, modelInfo, settings, contextInfo);
+			: settings.metricSet.length > 0
+				? formatMetricSet(theme, settings.metricSet, snapshotsForMetricSet(usageEntries, usage), settings, modelInfo)
+				: (!usage)
+					? undefined
+					: (hasFill || wantsSplit)
+						? formatUsageStatusWithWidth(theme, usage, innerWidth, modelInfo, settings, { labelGapFill: wantsSplit }, contextInfo)
+						: formatUsageStatus(theme, usage, modelInfo, settings, contextInfo);
 
 		const alignLine = (line: string) => {
 			if (!shouldAlign) return line;
@@ -565,8 +569,31 @@ export default function createExtension(pi: ExtensionAPI) {
 		return `${spacing}${theme.fg(dividerColor, dividerGlyph)}${spacing}`;
 	}
 
+	function headlessTheme(): Theme {
+		return {
+			fg: (_color: string, text: string) => text,
+			bold: (text: string) => text,
+			getBgAnsi: () => "",
+			getFgAnsi: () => "",
+		} as unknown as Theme;
+	}
+
 	function renderUsageWidget(ctx: ExtensionContext, usage: UsageSnapshot | undefined, message?: string): void {
-		if (!ctx.hasUI || !uiEnabled) {
+		if (!ctx.hasUI) {
+			const lines = formatUsageContent(ctx, headlessTheme(), usage, 120, message, {
+				forceNoFill: true,
+				forceLeftAlignment: true,
+				forceOverflow: "truncate",
+				useStatusSafePadding: true,
+			});
+			const line = lines.join(" ").trim();
+			console.error(`[pi-sub-bar] source=${import.meta.url}`);
+			console.error(`[pi-sub-bar] settings=${SETTINGS_PATH}`);
+			console.error(`[pi-sub-bar] metricSet=${JSON.stringify(settings.metricSet)}`);
+			console.error(`[pi-sub-bar] usage ${line || "(empty)"}`);
+			return;
+		}
+		if (!uiEnabled) {
 			return;
 		}
 
@@ -574,7 +601,7 @@ export default function createExtension(pi: ExtensionAPI) {
 
 		if (placement === "status") {
 			ctx.ui.setWidget("usage", undefined);
-			if (!usage && !message) {
+			if (!usage && !message && settings.metricSet.length === 0) {
 				ctx.ui.setStatus("sub-bar", "");
 				return;
 			}
@@ -609,7 +636,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		}
 
 		ctx.ui.setStatus("sub-bar", "");
-		if (!usage && !message) {
+		if (!usage && !message && settings.metricSet.length === 0) {
 			ctx.ui.setWidget("usage", undefined);
 			return;
 		}
@@ -629,6 +656,9 @@ export default function createExtension(pi: ExtensionAPI) {
 					const dividerLine = theme.fg(dividerColor, "─".repeat(safeWidth));
 
 					let lines = formatUsageContent(ctx, theme, usage, safeWidth, message);
+					if (lines.length === 0) {
+						return [];
+					}
 
 					if (showTopDivider) {
 						const baseLine = lines.length > 0 ? lines[0] : "";
@@ -655,11 +685,11 @@ export default function createExtension(pi: ExtensionAPI) {
 	}
 
 	function resolveDisplayedUsage(): UsageSnapshot | undefined {
-		const pinned = settings.pinnedProvider ?? null;
-		if (pinned) {
-			return usageEntries[pinned] ?? currentUsage;
-		}
-		return currentUsage;
+		return getDisplayUsage({
+			pinnedProvider: settings.pinnedProvider ?? null,
+			currentUsage,
+			usageEntries,
+		});
 	}
 
 	function syncAntigravityModels(usage?: UsageSnapshot): void {
@@ -716,6 +746,13 @@ export default function createExtension(pi: ExtensionAPI) {
 
 	function updateFetchFailureTicker(): void {
 		if (!uiEnabled) {
+			if (fetchFailureTimer) {
+				clearInterval(fetchFailureTimer);
+				fetchFailureTimer = undefined;
+			}
+			return;
+		}
+		if (settings.metricSet.length > 0) {
 			if (fetchFailureTimer) {
 				clearInterval(fetchFailureTimer);
 				fetchFailureTimer = undefined;
@@ -817,7 +854,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		});
 	}
 
-	function requestCoreEntries(timeoutMs = 1000): Promise<ProviderUsageEntry[] | undefined> {
+	function requestCoreEntries(timeoutMs = 1000, force?: boolean): Promise<ProviderUsageEntry[] | undefined> {
 		return new Promise((resolve) => {
 			let resolved = false;
 			const timer = setTimeout(() => {
@@ -829,6 +866,7 @@ export default function createExtension(pi: ExtensionAPI) {
 
 			const request: SubCoreRequest = {
 				type: "entries",
+				force,
 				reply: (payload) => {
 					if (resolved) return;
 					resolved = true;
@@ -849,6 +887,22 @@ export default function createExtension(pi: ExtensionAPI) {
 		if (lastContext) {
 			renderCurrent(lastContext);
 		}
+	}
+
+	async function ensureMetricSetEntries(): Promise<void> {
+		if (settings.metricSet.length === 0) return;
+		const missing = settings.metricSet.some((item) => !usageEntries[item.provider]);
+		if (!missing) return;
+		const entries = await requestCoreEntries();
+		updateEntries(entries);
+		if (lastContext) {
+			renderCurrent(lastContext);
+		}
+	}
+
+	async function ensurePinnedAndMetricSetEntries(): Promise<void> {
+		await ensurePinnedEntries(settings.pinnedProvider ?? null);
+		await ensureMetricSetEntries();
 	}
 
 	pi.events.on("sub-core:update-all", (payload) => {
@@ -897,6 +951,7 @@ export default function createExtension(pi: ExtensionAPI) {
 					if (settings.pinnedProvider && settings.pinnedProvider !== previousPinned) {
 						void ensurePinnedEntries(settings.pinnedProvider);
 					}
+					void ensureMetricSetEntries();
 					if (lastContext) {
 						renderCurrent(lastContext);
 					}
@@ -921,7 +976,7 @@ export default function createExtension(pi: ExtensionAPI) {
 				onDisplayThemeShared: (name, shareString, mode) => shareThemeString(ctx, name, shareString, mode ?? "prompt"),
 			});
 			settings = newSettings;
-			void ensurePinnedEntries(settings.pinnedProvider ?? null);
+			void ensurePinnedAndMetricSetEntries();
 			if (lastContext) {
 				renderCurrent(lastContext);
 			}
@@ -1037,9 +1092,6 @@ export default function createExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		lastContext = ctx;
 		uiEnabled = ctx.hasUI;
-		if (!uiEnabled) {
-			return;
-		}
 		settings = loadSettings();
 		coreSettings = getFallbackCoreSettings(settings);
 		if (!settingsSnapshot) {
@@ -1055,21 +1107,23 @@ export default function createExtension(pi: ExtensionAPI) {
 			}
 		}
 
-		const watchTimer = setTimeout(() => startSettingsWatch(), 0);
-		watchTimer.unref?.();
+		if (uiEnabled) {
+			const watchTimer = setTimeout(() => startSettingsWatch(), 0);
+			watchTimer.unref?.();
+		}
 
 		const sessionContext = ctx;
-		void (async () => {
+		const bootstrap = async () => {
 			await ensureSubCoreLoaded();
-			if (!lastContext || lastContext !== sessionContext || !uiEnabled) return;
-			const state = await requestCoreState();
-			if (!lastContext || lastContext !== sessionContext || !uiEnabled) return;
+			if (!lastContext || lastContext !== sessionContext) return;
+			const state = await requestCoreState(uiEnabled ? 1000 : 15000);
+			if (!lastContext || lastContext !== sessionContext) return;
 			if (state) {
 				coreAvailable = true;
 				updateUsage(state.usage);
-				if (settings.pinnedProvider) {
-					const entries = await requestCoreEntries();
-					if (!lastContext || lastContext !== sessionContext || !uiEnabled) return;
+				if (settings.pinnedProvider || settings.metricSet.length > 0) {
+					const entries = await requestCoreEntries(uiEnabled ? 1000 : 45000, uiEnabled ? undefined : true);
+					if (!lastContext || lastContext !== sessionContext) return;
 					updateEntries(entries);
 					if (lastContext) {
 						renderCurrent(lastContext);
@@ -1079,7 +1133,13 @@ export default function createExtension(pi: ExtensionAPI) {
 				coreAvailable = false;
 				renderCurrent(lastContext);
 			}
-		})();
+		};
+
+		if (uiEnabled) {
+			void bootstrap();
+		} else {
+			await bootstrap();
+		}
 	});
 
 	pi.on("model_select" as unknown as "session_start", async (_event: unknown, ctx: ExtensionContext) => {
@@ -1087,9 +1147,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		if (!uiEnabled || !ctx.hasUI) {
 			return;
 		}
-		if (currentUsage) {
-			renderUsageWidget(ctx, currentUsage);
-		}
+		renderCurrent(ctx);
 	});
 
 	pi.on("session_shutdown", async () => {

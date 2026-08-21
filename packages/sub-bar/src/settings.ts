@@ -40,6 +40,7 @@ function parseSettings(content: string): Settings {
 		displayThemes: loaded.displayThemes,
 		displayUserTheme: loaded.displayUserTheme,
 		pinnedProvider: loaded.pinnedProvider,
+		metricSet: loaded.metricSet,
 		keybindings: loaded.keybindings,
 	} as Partial<Settings>);
 }
@@ -109,6 +110,7 @@ export function saveSettings(settings: Settings): boolean {
 				const themesChanged = JSON.stringify(settings.displayThemes) !== JSON.stringify(cachedSettings.displayThemes);
 				const userThemeChanged = JSON.stringify(settings.displayUserTheme) !== JSON.stringify(cachedSettings.displayUserTheme);
 				const pinnedChanged = settings.pinnedProvider !== cachedSettings.pinnedProvider;
+				const metricSetChanged = JSON.stringify(settings.metricSet) !== JSON.stringify(cachedSettings.metricSet);
 				const keybindingsChanged = JSON.stringify(settings.keybindings) !== JSON.stringify(cachedSettings.keybindings);
 
 				next = {
@@ -119,6 +121,7 @@ export function saveSettings(settings: Settings): boolean {
 					displayThemes: themesChanged ? settings.displayThemes : diskSettings.displayThemes,
 					displayUserTheme: userThemeChanged ? settings.displayUserTheme : diskSettings.displayUserTheme,
 					pinnedProvider: pinnedChanged ? settings.pinnedProvider : diskSettings.pinnedProvider,
+					metricSet: metricSetChanged ? settings.metricSet : diskSettings.metricSet,
 					keybindings: keybindingsChanged ? settings.keybindings : diskSettings.keybindings,
 				};
 			}
@@ -130,6 +133,7 @@ export function saveSettings(settings: Settings): boolean {
 			displayThemes: next.displayThemes,
 			displayUserTheme: next.displayUserTheme,
 			pinnedProvider: next.pinnedProvider,
+			metricSet: next.metricSet,
 			keybindings: next.keybindings,
 		}, null, 2);
 		storage.writeFile(SETTINGS_PATH, content);
@@ -154,6 +158,7 @@ export function resetSettings(): Settings {
 		displayThemes: defaults.displayThemes,
 		displayUserTheme: defaults.displayUserTheme,
 		pinnedProvider: defaults.pinnedProvider,
+		metricSet: defaults.metricSet,
 		keybindings: defaults.keybindings,
 		version: defaults.version,
 	};

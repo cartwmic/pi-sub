@@ -137,6 +137,11 @@ const zaiWindowVisible: ProviderMetadata["isWindowVisible"] = (_usage, window, s
 	return true;
 };
 
+const cursorWindowVisible: ProviderMetadata["isWindowVisible"] = (_usage, _window, settings, _model) => {
+	if (!settings) return true;
+	return settings.providers.cursor.windows.showCycle;
+};
+
 const anthropicExtras: ProviderMetadata["getExtras"] = (usage, settings) => {
 	const extras: UsageExtra[] = [];
 	const showExtraWindow = settings?.providers.anthropic.windows.showExtra ?? true;
@@ -195,5 +200,9 @@ export const PROVIDER_METADATA: Record<ProviderName, ProviderMetadata> = {
 	zai: {
 		...BASE_METADATA.zai,
 		isWindowVisible: zaiWindowVisible,
+	},
+	cursor: {
+		...BASE_METADATA.cursor,
+		isWindowVisible: cursorWindowVisible,
 	},
 };

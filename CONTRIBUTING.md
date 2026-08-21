@@ -42,6 +42,16 @@ npm run check:watch -w @marckrenn/pi-sub-shared
 npm run test:watch -w @marckrenn/pi-sub-bar
 ```
 
+## Adding a provider
+
+Update both **sub-core** (fetch) and **sub-bar** (display). Current fetchers live in `packages/sub-core/src/providers/impl/`:
+
+`anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
+
+Cursor remaining/spend need a positive `metricSet` cap in `pi-sub-bar-settings.json`. Do not add a compiled or provider-default cap.
+
+See the root README “Adding a Provider (summary)” for the full checklist.
+
 ## Changesets
 
 For user-facing changes, add a changeset:

@@ -34,6 +34,7 @@ https://github.com/user-attachments/assets/d61d82f6-afd0-45fc-82f3-69910543aa7a
 | Google Gemini | Pro/Flash quotas | ✅ |
 | Antigravity | Model quotas | ✅ |
 | OpenAI Codex | Primary/secondary windows | ✅ |
+| Cursor | Current-cycle spend (cap from `metricSet`) | - |
 | AWS Kiro | Credits | - |
 | z.ai | Tokens/monthly limits | - |
 
@@ -46,22 +47,22 @@ https://github.com/user-attachments/assets/d61d82f6-afd0-45fc-82f3-69910543aa7a
 | Google Gemini | Pro, Flash | - | ✅ | - | Quotas aggregated per model family |
 | Antigravity | Models | - | ✅ | ✅ | Sandbox Cloud Code Assist quotas |
 | OpenAI Codex | Primary, Secondary | - | ✅ | ✅ | Credits not yet supported (PRs welcome!) |
+| Cursor | Spend | remaining or spend vs configured cap | - | ✅ | Positive `metricSet` cap required; no compiled cap |
 | AWS Kiro | Credits | - | - | - | - |
 | z.ai | Tokens, Monthly | - | - | - | API quota limits |
 
 ## Installation
 
-Install via the pi package manager (recommended). `sub-bar` bundles `sub-core`, so you only need to install sub-bar:
+This fork installs as a Pi GitHub package (operator path):
 
 ```bash
-pi install npm:@marckrenn/pi-sub-bar
+pi install https://github.com/cartwmic/pi-sub
 ```
 
-Use `-l` to install into project settings instead of global:
-
-```bash
-pi install -l npm:@marckrenn/pi-sub-bar
-```
+That root package loads `sub-bar` and `sub-core`. Do not use
+`npm:@marckrenn/pi-sub-bar` (global or `-l`) as this fork's install; that npm
+name is the upstream package. A nonempty `metricSet` in `pi-sub-bar-settings.json` is
+the always-visible remaining/spend set; see Metric set below.
 
 If you previously installed `sub-core` separately, remove it from `~/.pi/agent/extensions` or `~/.pi/agent/settings.json` to avoid duplicate core instances.
 
@@ -118,6 +119,12 @@ Display and provider UI settings are stored in `~/.pi/agent/pi-sub-bar-settings.
 
 **Settings migrations:** settings are merged with defaults on load, but renames/removals are not migrated automatically. When adding new settings or changing schema, update the defaults/merge logic and provide a migration (or instruct users to reset `pi-sub-bar-settings.json`).
 
+### Metric set
+
+`metricSet` is an ordered list of `{ provider, display, cap? }` entries in `pi-sub-bar-settings.json`. Each item names a subscription provider, whether to show `remaining` or `spend`, and an optional positive numeric cap. Membership, remaining-versus-spend, and caps live only in this field. An empty list (the source default) keeps the existing model-follow / single-pin display. Missing or non-array `metricSet` values fall back to `[]`. Invalid items are dropped on load; `cap` is kept only when it is a finite number greater than 0.
+
+When `metricSet` is nonempty, the widget concatenates compact remaining-or-spend numbers for that ordered list from already-fetched provider snapshots. Selected model and `pinnedProvider` do not choose membership. An item is omitted (siblings still render) when it has no snapshot, a snapshot error, missing credentials, no window left after that provider's window flags, or — for Cursor — a missing positive `cap` or non-finite `usedAmount`. The widget is blank only when every item is omitted; missing-auth items do not show a persistent error chip.
+
 ### Provider UI Settings
 
 Use `sub-bar:settings` → Provider Settings to control enabled state (auto/on/off), status indicators, and per-provider window visibility.
@@ -145,12 +152,13 @@ Credentials are loaded by sub-core from:
 
 ### Packaging notes (pi install compatibility)
 
-Pi packages use a `pi` field in `package.json` plus the `pi-package` keyword for discoverability. This repo already declares `pi.extensions`, so you can install via:
+Pi packages use a `pi` field in `package.json` plus the `pi-package` keyword for discoverability. This fork's operator install is the repo root:
 
 ```bash
-pi install npm:@marckrenn/pi-sub-core
-pi install npm:@marckrenn/pi-sub-bar
+pi install https://github.com/cartwmic/pi-sub
 ```
+
+Upstream npm names (`npm:@marckrenn/pi-sub-bar`) are not this operator's install path.
 
 Manual paths/symlinks still work for local development as documented above.
 

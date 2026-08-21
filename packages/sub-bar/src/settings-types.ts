@@ -274,6 +274,12 @@ export interface ZaiProviderSettings extends BaseProviderSettings {
 	};
 }
 
+export interface CursorProviderSettings extends BaseProviderSettings {
+	windows: {
+		showCycle: boolean;
+	};
+}
+
 export interface ProviderSettingsMap {
 	anthropic: AnthropicProviderSettings;
 	copilot: CopilotProviderSettings;
@@ -282,6 +288,7 @@ export interface ProviderSettingsMap {
 	codex: CodexProviderSettings;
 	kiro: KiroProviderSettings;
 	zai: ZaiProviderSettings;
+	cursor: CursorProviderSettings;
 }
 
 export type { BehaviorSettings, CoreSettings } from "@marckrenn/pi-sub-shared";
@@ -404,6 +411,19 @@ export interface DisplayTheme {
 	source?: "saved" | "imported";
 }
 
+/** Remaining-versus-spend mode for a configured metric-set item. */
+export type MetricDisplay = "remaining" | "spend";
+
+/**
+ * One subscription in the ordered metric set.
+ * `cap` is configuration-only; source defaults never set it.
+ */
+export interface MetricSetItem {
+	provider: ProviderName;
+	display: MetricDisplay;
+	cap?: number;
+}
+
 export interface Settings extends Omit<CoreSettings, "providers"> {
 	/** Version for migration */
 	version: number;
@@ -417,6 +437,11 @@ export interface Settings extends Omit<CoreSettings, "providers"> {
 	displayUserTheme: DisplaySettings | null;
 	/** Pinned provider override for display */
 	pinnedProvider: ProviderName | null;
+	/**
+	 * Ordered metric set. Empty keeps existing model-follow / pin display.
+	 * Membership, remaining-versus-spend, and caps live only here.
+	 */
+	metricSet: MetricSetItem[];
 	/** Keybinding settings (changes require pi restart) */
 	keybindings: KeybindingSettings;
 }
@@ -488,6 +513,12 @@ export function getDefaultSettings(): Settings {
 					showMonthly: true,
 				},
 			},
+			cursor: {
+				showStatus: true,
+				windows: {
+					showCycle: true,
+				},
+			},
 		},
 		display: {
 			alignment: "split",
@@ -545,6 +576,7 @@ export function getDefaultSettings(): Settings {
 		displayThemes: [],
 		displayUserTheme: null,
 		pinnedProvider: null,
+		metricSet: [],
 
 		keybindings: {
 			cycleProvider: "ctrl+alt+p",
@@ -593,12 +625,43 @@ function deepMerge<T extends object>(target: T, source: Partial<T>): T {
 	return result;
 }
 
+function isProviderName(value: unknown): value is ProviderName {
+	return typeof value === "string" && (PROVIDERS as readonly string[]).includes(value);
+}
+
+function isMetricDisplay(value: unknown): value is MetricDisplay {
+	return value === "remaining" || value === "spend";
+}
+
+function normalizeMetricSetItem(item: unknown): MetricSetItem | undefined {
+	if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
+	const raw = item as Record<string, unknown>;
+	if (!isProviderName(raw.provider) || !isMetricDisplay(raw.display)) return undefined;
+	const cap =
+		typeof raw.cap === "number" && Number.isFinite(raw.cap) && raw.cap > 0 ? raw.cap : undefined;
+	return cap === undefined
+		? { provider: raw.provider, display: raw.display }
+		: { provider: raw.provider, display: raw.display, cap };
+}
+
+function normalizeMetricSet(value: unknown): MetricSetItem[] {
+	if (!Array.isArray(value)) return [];
+	const items: MetricSetItem[] = [];
+	for (const item of value) {
+		const normalized = normalizeMetricSetItem(item);
+		if (normalized) items.push(normalized);
+	}
+	return items;
+}
+
 /**
  * Merge settings with defaults (no legacy migrations).
  */
 export function mergeSettings(loaded: Partial<Settings>): Settings {
 	const migrated = migrateSettings(loaded);
-	return deepMerge(getDefaultSettings(), migrated);
+	const merged = deepMerge(getDefaultSettings(), migrated);
+	merged.metricSet = normalizeMetricSet(migrated.metricSet);
+	return merged;
 }
 
 const WIDGET_PLACEMENTS = ["aboveEditor", "belowEditor", "status"] as const;

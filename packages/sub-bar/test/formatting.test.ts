@@ -5,7 +5,9 @@ import type { Theme } from "@mariozechner/pi-coding-agent";
 import { formatUsageStatus, formatUsageStatusWithWidth, formatUsageWindowParts } from "../src/formatting.js";
 import { shouldShowWindow } from "../src/providers/windows.js";
 import { getDefaultSettings } from "../src/settings-types.js";
+import type { MetricSetItem } from "../src/settings-types.js";
 import type { UsageSnapshot } from "../src/types.js";
+import { formatMetricSet, getDisplayUsage } from "../src/usage/metric-set.js";
 
 const theme = {
 	fg: (_color: string, text: string) => text,
@@ -434,4 +436,164 @@ test("context bar not shown when contextWindow is 0", () => {
 	assert.ok(output);
 	assert.ok(!output.includes("Ctx"));
 
+});
+
+
+function cursorSnapshot(usedAmount = 25): UsageSnapshot {
+	return {
+		provider: "cursor",
+		displayName: "Cursor Plan",
+		windows: [{ label: "$25.00", usedPercent: 0, usedAmount }],
+	};
+}
+
+function anthropicSnapshot(): UsageSnapshot {
+	return {
+		provider: "anthropic",
+		displayName: "Anthropic (Claude)",
+		windows: [
+			{ label: "5h", usedPercent: 10 },
+			{ label: "Week", usedPercent: 20 },
+		],
+	};
+}
+
+function codexSnapshot(): UsageSnapshot {
+	return {
+		provider: "codex",
+		displayName: "Codex Plan",
+		windows: [
+			{ label: "5h", usedPercent: 40 },
+			{ label: "Week", usedPercent: 50 },
+		],
+	};
+}
+
+function geminiSnapshot(): UsageSnapshot {
+	return {
+		provider: "gemini",
+		displayName: "Gemini",
+		windows: [{ label: "Pro", usedPercent: 33 }],
+	};
+}
+
+function remainingSet(cursorCap?: number): MetricSetItem[] {
+	return [
+		cursorCap === undefined
+			? { provider: "cursor", display: "remaining" }
+			: { provider: "cursor", display: "remaining", cap: cursorCap },
+		{ provider: "anthropic", display: "remaining" },
+		{ provider: "codex", display: "remaining" },
+	];
+}
+
+function metricSetSettings(metricSet: MetricSetItem[]) {
+	const settings = getDefaultSettings();
+	settings.metricSet = metricSet;
+	settings.display.barStyle = "percentage";
+	settings.display.showUsageLabels = true;
+	settings.pinnedProvider = "gemini";
+	return settings;
+}
+
+function assertCompositeRemaining(output: string | undefined): void {
+	assert.ok(output);
+	assert.ok(output.includes("$75.00"));
+	assert.ok(output.includes("75% rem."));
+	assert.ok(output.includes("90% rem."));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("Pro"), false);
+	assert.equal(output.includes("Gemini"), false);
+}
+
+test("nonempty metricSet still shows Cursor+anthropic+codex when selected model is none of them", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: cursorSnapshot(),
+		anthropic: anthropicSnapshot(),
+		codex: codexSnapshot(),
+		gemini: geminiSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings, {
+		provider: "gemini",
+		id: "gemini-2.5-pro",
+	});
+	assertCompositeRemaining(output);
+});
+
+test("nonempty metricSet still shows Cursor+anthropic+codex when selected model is only one of them", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: cursorSnapshot(),
+		anthropic: anthropicSnapshot(),
+		codex: codexSnapshot(),
+		gemini: geminiSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings, {
+		provider: "anthropic",
+		id: "claude-sonnet-4",
+	});
+	assertCompositeRemaining(output);
+});
+
+test("one NO_CREDENTIALS item omits only that item", () => {
+	const settings = metricSetSettings(remainingSet(100));
+	const snapshots = {
+		cursor: cursorSnapshot(),
+		anthropic: {
+			...anthropicSnapshot(),
+			error: { code: "NO_CREDENTIALS" as const, message: "No credentials found" },
+		},
+		codex: codexSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("$75.00"));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("90% rem."), false);
+	assert.equal(output.includes("No creds"), false);
+	assert.equal(output.includes("No credentials"), false);
+	assert.equal(output.includes("NO_CREDENTIALS"), false);
+});
+
+test("cursor without cap omits only cursor", () => {
+	const settings = metricSetSettings(remainingSet());
+	const snapshots = {
+		cursor: cursorSnapshot(),
+		anthropic: anthropicSnapshot(),
+		codex: codexSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("90% rem."));
+	assert.ok(output.includes("60% rem."));
+	assert.equal(output.includes("$75.00"), false);
+	assert.equal(output.includes("$25.00"), false);
+});
+
+test("empty metricSet still follows model/pin", () => {
+	const settings = getDefaultSettings();
+	assert.deepEqual(settings.metricSet, []);
+	const anthropic = anthropicSnapshot();
+	const cursor = cursorSnapshot();
+	const gemini = geminiSnapshot();
+	const usageEntries = { cursor, gemini };
+
+	assert.equal(
+		getDisplayUsage({
+			pinnedProvider: "cursor",
+			currentUsage: anthropic,
+			usageEntries,
+		}),
+		cursor,
+	);
+	assert.equal(
+		getDisplayUsage({
+			pinnedProvider: null,
+			currentUsage: anthropic,
+			usageEntries,
+		}),
+		anthropic,
+	);
+	assert.equal(formatMetricSet(theme, [], usageEntries, settings), undefined);
 });

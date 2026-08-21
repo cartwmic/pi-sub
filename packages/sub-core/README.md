@@ -132,6 +132,8 @@ See the root README “Developer guide” for the decision checklist and example
 #### sub-core (fetch + status)
 1. Add provider name to `src/types.ts` (`PROVIDERS`, `ProviderName`).
 2. Implement fetcher in `src/providers/impl/<provider>.ts`.
+   Current impl files: `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
+   Cursor remaining/spend read a positive `metricSet` cap from bar settings; do not add a compiled or provider-default cap.
 3. Register provider in `src/providers/registry.ts`.
 4. Add detection + status config in `src/providers/metadata.ts`.
 5. Add provider settings defaults in `src/settings-types.ts`.

@@ -22,3 +22,8 @@ test("detectProviderFromModel handles overlapping provider tokens", () => {
 	const provider = detectProviderFromModel({ provider: "z.ai", id: "model" });
 	assert.equal(provider, "zai");
 });
+
+test("detectProviderFromModel matches cursor from provider tokens", () => {
+	const provider = detectProviderFromModel({ provider: "cursor", id: "composer" });
+	assert.equal(provider, "cursor");
+});
