@@ -3,7 +3,7 @@
  */
 
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import type { MetricSetItem, Settings } from "../settings-types.js";
+import type { MetricSetItem, MetricUnit, Settings } from "../settings-types.js";
 import { resolveDividerColor } from "../settings-types.js";
 import type { ProviderName, RateWindow, UsageSnapshot } from "../types.js";
 import { isExpectedMissingData } from "../errors.js";
@@ -44,6 +44,55 @@ function cursorUsedAmount(windows: RateWindow[]): number | undefined {
 		}
 	}
 	return undefined;
+}
+
+function cursorCapAmount(item: MetricSetItem, windows: RateWindow[]): number | undefined {
+	if (hasPositiveCap(item.cap)) return item.cap;
+	for (const window of windows) {
+		if (hasPositiveCap(window.capAmount)) return window.capAmount;
+	}
+	return undefined;
+}
+
+/**
+ * Remaining defaults to percent. Spend defaults to dollars.
+ * A configured cap without an explicit unit keeps the previous dollars path.
+ */
+export function metricSetUnit(item: MetricSetItem): MetricUnit {
+	if (item.unit === "percent" || item.unit === "dollars") return item.unit;
+	if (item.display === "spend") return "dollars";
+	if (hasPositiveCap(item.cap)) return "dollars";
+	return "percent";
+}
+
+/**
+ * Short subscription name for a metric-set fragment.
+ * Anthropic is labeled Claude to match the product name users expect.
+ */
+export function metricSetProviderLabel(usage: UsageSnapshot): string {
+	switch (usage.provider) {
+		case "anthropic":
+			return "Claude";
+		case "codex":
+			return "Codex";
+		case "cursor":
+			return "Cursor";
+		case "copilot":
+			return "Copilot";
+		case "gemini":
+			return "Gemini";
+		case "antigravity":
+			return "Antigravity";
+		case "kiro":
+			return "Kiro";
+		case "zai":
+			return "z.ai";
+		default:
+			break;
+	}
+	const raw = usage.displayName?.trim() ?? "";
+	const stripped = raw.replace(/\s+(plan|subscription|sub\.?)[\s]*$/i, "").trim();
+	return stripped || raw || usage.provider;
 }
 
 function usageDivider(theme: Theme, settings?: Settings): string {
@@ -90,41 +139,48 @@ function prepareMetricSetItem(
 	if (!snapshotHasCredentials(snapshot)) return undefined;
 	if (snapshot.error) return undefined;
 
-	const isCursor = item.provider === "cursor";
-	if (isCursor && !hasPositiveCap(item.cap)) return undefined;
-
-	const usedAmount = isCursor ? cursorUsedAmount(snapshot.windows) : undefined;
-	if (isCursor && (typeof usedAmount !== "number" || !Number.isFinite(usedAmount))) {
-		return undefined;
-	}
-
 	const visible = snapshot.windows.filter((window) => shouldShowWindow(snapshot, window, settings));
 	if (visible.length === 0) return undefined;
 
 	const invertUsage = item.display === "remaining";
+	const unit = metricSetUnit(item);
+	const isCursor = item.provider === "cursor";
 
-	if (isCursor && hasPositiveCap(item.cap) && typeof usedAmount === "number") {
-		const usedPercent = (usedAmount / item.cap) * 100;
+	if (isCursor && unit === "dollars") {
+		const usedAmount = cursorUsedAmount(snapshot.windows);
+		const capAmount = cursorCapAmount(item, snapshot.windows);
+		if (typeof usedAmount !== "number" || !Number.isFinite(usedAmount) || !hasPositiveCap(capAmount)) {
+			return undefined;
+		}
+		const usedPercent = (usedAmount / capAmount) * 100;
 		const source = visible[0];
+		const remaining = Math.max(0, capAmount - usedAmount);
 		const label =
 			item.display === "spend"
-				? `${formatDollars(usedAmount)}/${formatDollars(item.cap)}`
-				: formatDollars(item.cap - usedAmount);
+				? `${formatDollars(usedAmount)}/${formatDollars(capAmount)}`
+				: formatDollars(remaining);
 		const window: RateWindow = {
 			...source,
 			usedPercent,
 			usedAmount,
+			capAmount,
 			label,
 		};
 		return [{ window, invertUsage, usage: snapshot }];
 	}
 
-	return visible.map((window) => ({ window, invertUsage, usage: snapshot }));
+	// Percent must not inherit spend titles from the provider or a stale cache.
+	return visible.map((window) => ({
+		window: isCursor ? { ...window, label: "" } : window,
+		invertUsage,
+		usage: snapshot,
+	}));
 }
 
 /**
  * Render a nonempty metricSet as concatenated formatUsageWindow fragments.
  * Membership follows list order only. Unusable items are omitted.
+ * Each fragment is prefixed with its subscription name.
  */
 export function formatMetricSet(
 	theme: Theme,
@@ -139,10 +195,10 @@ export function formatMetricSet(
 	for (const item of metricSet) {
 		const prepared = prepareMetricSetItem(item, snapshots[item.provider], settings);
 		if (!prepared) continue;
+		const name = metricSetProviderLabel(prepared[0]?.usage ?? snapshots[item.provider]!);
 		for (const entry of prepared) {
-			parts.push(
-				formatUsageWindow(theme, entry.window, entry.invertUsage, settings, entry.usage),
-			);
+			const formatted = formatUsageWindow(theme, entry.window, entry.invertUsage, settings, entry.usage);
+			parts.push(name ? `${name} ${formatted}` : formatted);
 		}
 	}
 

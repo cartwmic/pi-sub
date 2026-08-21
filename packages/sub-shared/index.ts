@@ -18,6 +18,8 @@ export interface RateWindow {
 	usedPercent: number;
 	/** Spend amount in USD dollars when the window reports currency instead of a native percent. */
 	usedAmount?: number;
+	/** Spend cap in USD dollars when Cursor (or another provider) reports one from its API. */
+	capAmount?: number;
 	resetDescription?: string;
 	resetAt?: string;
 }

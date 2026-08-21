@@ -414,13 +414,20 @@ export interface DisplayTheme {
 /** Remaining-versus-spend mode for a configured metric-set item. */
 export type MetricDisplay = "remaining" | "spend";
 
+/** Percent remaining/used versus currency remaining/spend. */
+export type MetricUnit = "percent" | "dollars";
+
 /**
  * One subscription in the ordered metric set.
- * `cap` is configuration-only; source defaults never set it.
+ * `cap` is an optional override; source defaults never set it.
+ * Cursor dollars remaining/spend use `cap` when present, otherwise the
+ * provider's API `capAmount`. Cursor remaining percent uses the provider
+ * window's `usedPercent` and does not need a cap.
  */
 export interface MetricSetItem {
 	provider: ProviderName;
 	display: MetricDisplay;
+	unit?: MetricUnit;
 	cap?: number;
 }
 
@@ -633,15 +640,21 @@ function isMetricDisplay(value: unknown): value is MetricDisplay {
 	return value === "remaining" || value === "spend";
 }
 
+function isMetricUnit(value: unknown): value is MetricUnit {
+	return value === "percent" || value === "dollars";
+}
+
 function normalizeMetricSetItem(item: unknown): MetricSetItem | undefined {
 	if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
 	const raw = item as Record<string, unknown>;
 	if (!isProviderName(raw.provider) || !isMetricDisplay(raw.display)) return undefined;
 	const cap =
 		typeof raw.cap === "number" && Number.isFinite(raw.cap) && raw.cap > 0 ? raw.cap : undefined;
-	return cap === undefined
-		? { provider: raw.provider, display: raw.display }
-		: { provider: raw.provider, display: raw.display, cap };
+	const unit = isMetricUnit(raw.unit) ? raw.unit : undefined;
+	const normalized: MetricSetItem = { provider: raw.provider, display: raw.display };
+	if (unit) normalized.unit = unit;
+	if (cap !== undefined) normalized.cap = cap;
+	return normalized;
 }
 
 function normalizeMetricSet(value: unknown): MetricSetItem[] {

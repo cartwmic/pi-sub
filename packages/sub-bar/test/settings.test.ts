@@ -387,3 +387,20 @@ test("mergeSettings keeps finite positive caps and drops invalid caps", () => {
 	]);
 	assert.equal("cap" in settings.metricSet[1], false);
 });
+
+test("mergeSettings keeps percent/dollars units and drops invalid units", () => {
+	const settings = mergeSettings({
+		metricSet: [
+			{ provider: "cursor", display: "remaining", unit: "dollars" },
+			{ provider: "anthropic", display: "remaining", unit: "percent" },
+			{ provider: "codex", display: "remaining", unit: "credits" },
+			{ provider: "gemini", display: "spend", unit: "dollars", cap: 50 },
+		],
+	} as any);
+	assert.deepEqual(settings.metricSet, [
+		{ provider: "cursor", display: "remaining", unit: "dollars" },
+		{ provider: "anthropic", display: "remaining", unit: "percent" },
+		{ provider: "codex", display: "remaining" },
+		{ provider: "gemini", display: "spend", unit: "dollars", cap: 50 },
+	]);
+});
