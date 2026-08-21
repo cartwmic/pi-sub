@@ -18,6 +18,7 @@ import type { KeyId } from "@mariozechner/pi-tui";
 import { formatUsageStatus, formatUsageStatusWithWidth } from "./src/formatting.js";
 import type { ContextInfo } from "./src/formatting.js";
 import { formatMetricSet, getDisplayUsage, snapshotsForMetricSet } from "./src/usage/metric-set.js";
+import { metricSetEntriesRequest } from "./src/usage/metric-set-fetch.js";
 import { clearSettingsCache, loadSettings, saveSettings, SETTINGS_PATH } from "./src/settings.js";
 import { showSettingsUI } from "./src/settings-ui.js";
 import { decodeDisplayShareString } from "./src/share.js";
@@ -891,10 +892,11 @@ export default function createExtension(pi: ExtensionAPI) {
 	}
 
 	async function ensureMetricSetEntries(): Promise<void> {
-		if (settings.metricSet.length === 0) return;
+		const request = metricSetEntriesRequest(settings.metricSet.length);
+		if (!request) return;
 		const missing = settings.metricSet.some((item) => !usageEntries[item.provider]);
 		if (!missing) return;
-		const entries = await requestCoreEntries();
+		const entries = await requestCoreEntries(request.timeoutMs, request.force);
 		updateEntries(entries);
 		if (lastContext) {
 			renderCurrent(lastContext);
@@ -919,6 +921,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		coreAvailable = true;
 		const state = payload as { state?: SubCoreState };
 		updateUsage(state.state?.usage);
+		void ensureMetricSetEntries();
 	});
 
 	pi.events.on("sub-core:ready", (payload) => {
@@ -926,6 +929,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		const state = payload as { state?: SubCoreState; settings?: CoreSettings };
 		applyCoreSettings(state.settings);
 		updateUsage(state.state?.usage);
+		void ensureMetricSetEntries();
 	});
 
 	pi.events.on("sub-core:settings:updated", (payload) => {
@@ -1122,16 +1126,20 @@ export default function createExtension(pi: ExtensionAPI) {
 			if (state) {
 				coreAvailable = true;
 				updateUsage(state.usage);
-				if (settings.pinnedProvider || settings.metricSet.length > 0) {
-					const entries = await requestCoreEntries(uiEnabled ? 1000 : 45000, uiEnabled ? undefined : true);
-					if (!lastContext || lastContext !== sessionContext) return;
-					updateEntries(entries);
-					if (lastContext) {
-						renderCurrent(lastContext);
-					}
+			}
+			const metricRequest = metricSetEntriesRequest(settings.metricSet.length);
+			if (settings.pinnedProvider || metricRequest) {
+				const timeoutMs = metricRequest?.timeoutMs ?? (uiEnabled ? 1000 : 45000);
+				const force = metricRequest?.force ?? (uiEnabled ? undefined : true);
+				const entries = await requestCoreEntries(timeoutMs, force);
+				if (!lastContext || lastContext !== sessionContext) return;
+				if (entries) coreAvailable = true;
+				updateEntries(entries);
+				if (lastContext) {
+					renderCurrent(lastContext);
 				}
-			} else if (lastContext && !coreAvailable) {
-				coreAvailable = false;
+			} else if (lastContext) {
+				if (!state) coreAvailable = false;
 				renderCurrent(lastContext);
 			}
 		};
