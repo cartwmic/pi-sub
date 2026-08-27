@@ -15,6 +15,7 @@ import type {
 	KiroProviderSettings,
 	ZaiProviderSettings,
 	CursorProviderSettings,
+	OpenRouterProviderSettings,
 } from "../settings-types.js";
 
 function buildBaseProviderItems(ps: BaseProviderSettings): SettingItem[] {
@@ -237,6 +238,17 @@ export function buildProviderSettingsItems(settings: Settings, provider: Provide
 		});
 	}
 
+	if (provider === "openrouter") {
+		const openRouterSettings = ps as OpenRouterProviderSettings;
+		items.push({
+			id: "showCredits",
+			label: "Show Credits Window",
+			currentValue: openRouterSettings.windows.showCredits ? "on" : "off",
+			values: ["on", "off"],
+			description: "Show the prepaid credits usage window.",
+		});
+	}
+
 	return items;
 }
 
@@ -372,6 +384,15 @@ export function applyProviderSettingsChange(
 		switch (id) {
 			case "showCycle":
 				cursorSettings.windows.showCycle = value === "on";
+				break;
+		}
+	}
+
+	if (provider === "openrouter") {
+		const openRouterSettings = ps as OpenRouterProviderSettings;
+		switch (id) {
+			case "showCredits":
+				openRouterSettings.windows.showCredits = value === "on";
 				break;
 		}
 	}

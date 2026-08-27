@@ -49,7 +49,16 @@ function snapshotHasCredentials(snapshot: UsageSnapshot): boolean {
 	return !isExpectedMissingData(snapshot.error);
 }
 
-function cursorUsedAmount(windows: RateWindow[]): number | undefined {
+/**
+ * Providers whose windows report spend against an API-provided cap via
+ * `usedAmount`/`capAmount`. Their dollar metrics are computed from those
+ * fields; `cap` stays an optional override.
+ */
+function usesApiCap(provider: ProviderName): boolean {
+	return provider === "cursor" || provider === "openrouter";
+}
+
+function windowUsedAmount(windows: RateWindow[]): number | undefined {
 	for (const window of windows) {
 		if (typeof window.usedAmount === "number" && Number.isFinite(window.usedAmount)) {
 			return window.usedAmount;
@@ -58,7 +67,7 @@ function cursorUsedAmount(windows: RateWindow[]): number | undefined {
 	return undefined;
 }
 
-function cursorCapAmount(item: MetricSetItem, windows: RateWindow[]): number | undefined {
+function windowCapAmount(item: MetricSetItem, windows: RateWindow[]): number | undefined {
 	if (hasPositiveCap(item.cap)) return item.cap;
 	for (const window of windows) {
 		if (hasPositiveCap(window.capAmount)) return window.capAmount;
@@ -99,6 +108,8 @@ export function metricSetProviderLabel(usage: UsageSnapshot): string {
 			return "Kiro";
 		case "zai":
 			return "z.ai";
+		case "openrouter":
+			return "OpnRtr";
 		default:
 			break;
 	}
@@ -160,11 +171,11 @@ function prepareMetricSetItem(
 
 	const invertUsage = item.display === "remaining";
 	const unit = metricSetUnit(item);
-	const isCursor = item.provider === "cursor";
+	const hasApiCap = usesApiCap(item.provider);
 
-	if (isCursor && unit === "dollars") {
-		const usedAmount = cursorUsedAmount(snapshot.windows);
-		const capAmount = cursorCapAmount(item, snapshot.windows);
+	if (hasApiCap && unit === "dollars") {
+		const usedAmount = windowUsedAmount(snapshot.windows);
+		const capAmount = windowCapAmount(item, snapshot.windows);
 		if (typeof usedAmount !== "number" || !Number.isFinite(usedAmount) || !hasPositiveCap(capAmount)) {
 			return undefined;
 		}
@@ -187,7 +198,7 @@ function prepareMetricSetItem(
 
 	// Percent must not inherit spend titles from the provider or a stale cache.
 	return visible.map((window) => ({
-		window: isCursor ? { ...window, label: "" } : window,
+		window: hasApiCap ? { ...window, label: "" } : window,
 		invertUsage,
 		usage: snapshot,
 		unit,

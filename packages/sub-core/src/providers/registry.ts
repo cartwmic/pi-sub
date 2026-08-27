@@ -10,6 +10,7 @@ export { CodexProvider } from "./impl/codex.js";
 export { KiroProvider } from "./impl/kiro.js";
 export { ZaiProvider } from "./impl/zai.js";
 export { CursorProvider } from "./impl/cursor.js";
+export { OpenRouterProvider } from "./impl/openrouter.js";
 
 import type { Dependencies, ProviderName } from "../types.js";
 import type { UsageProvider } from "../provider.js";
@@ -22,6 +23,7 @@ import { CodexProvider } from "./impl/codex.js";
 import { KiroProvider } from "./impl/kiro.js";
 import { ZaiProvider } from "./impl/zai.js";
 import { CursorProvider } from "./impl/cursor.js";
+import { OpenRouterProvider } from "./impl/openrouter.js";
 
 const PROVIDER_FACTORIES: Record<ProviderName, () => UsageProvider> = {
 	anthropic: () => new AnthropicProvider(),
@@ -32,6 +34,7 @@ const PROVIDER_FACTORIES: Record<ProviderName, () => UsageProvider> = {
 	kiro: () => new KiroProvider(),
 	zai: () => new ZaiProvider(),
 	cursor: () => new CursorProvider(),
+	openrouter: () => new OpenRouterProvider(),
 };
 
 /**

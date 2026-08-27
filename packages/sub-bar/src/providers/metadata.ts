@@ -142,6 +142,13 @@ const cursorWindowVisible: ProviderMetadata["isWindowVisible"] = (_usage, _windo
 	return settings.providers.cursor.windows.showCycle;
 };
 
+const openRouterWindowVisible: ProviderMetadata["isWindowVisible"] = (_usage, window, settings) => {
+	if (!settings) return true;
+	const ps = settings.providers.openrouter;
+	if (window.label === "Credits") return ps.windows.showCredits;
+	return true;
+};
+
 const anthropicExtras: ProviderMetadata["getExtras"] = (usage, settings) => {
 	const extras: UsageExtra[] = [];
 	const showExtraWindow = settings?.providers.anthropic.windows.showExtra ?? true;
@@ -204,5 +211,9 @@ export const PROVIDER_METADATA: Record<ProviderName, ProviderMetadata> = {
 	cursor: {
 		...BASE_METADATA.cursor,
 		isWindowVisible: cursorWindowVisible,
+	},
+	openrouter: {
+		...BASE_METADATA.openrouter,
+		isWindowVisible: openRouterWindowVisible,
 	},
 };

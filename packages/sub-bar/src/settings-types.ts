@@ -280,6 +280,12 @@ export interface CursorProviderSettings extends BaseProviderSettings {
 	};
 }
 
+export interface OpenRouterProviderSettings extends BaseProviderSettings {
+	windows: {
+		showCredits: boolean;
+	};
+}
+
 export interface ProviderSettingsMap {
 	anthropic: AnthropicProviderSettings;
 	copilot: CopilotProviderSettings;
@@ -289,6 +295,7 @@ export interface ProviderSettingsMap {
 	kiro: KiroProviderSettings;
 	zai: ZaiProviderSettings;
 	cursor: CursorProviderSettings;
+	openrouter: OpenRouterProviderSettings;
 }
 
 export type { BehaviorSettings, CoreSettings } from "@marckrenn/pi-sub-shared";
@@ -524,6 +531,12 @@ export function getDefaultSettings(): Settings {
 				showStatus: true,
 				windows: {
 					showCycle: true,
+				},
+			},
+			openrouter: {
+				showStatus: true,
+				windows: {
+					showCredits: true,
 				},
 			},
 		},
