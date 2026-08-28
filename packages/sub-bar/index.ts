@@ -529,7 +529,7 @@ export default function createExtension(pi: ExtensionAPI) {
 
 		let lines: string[] = [];
 		if (metricLines) {
-			// Metric-set layout is remaining + time. Truncate each row; do not wrap to a third.
+			// Metric-set layout is names + remaining + time. Truncate each row; do not wrap to a fourth.
 			lines = metricLines.map((line) => alignLine(truncateToWidth(line, innerWidth, theme.fg("dim", "..."))));
 		} else if (!formatted) {
 			lines = [];

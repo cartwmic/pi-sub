@@ -573,7 +573,8 @@ test("cursor remaining without cap uses subscription percent even when API capAm
 	};
 	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
 	assert.ok(output);
-	assert.ok(output.includes("Cursor 34%"));
+	assert.ok(output.includes("Cursor"));
+	assert.ok(output.includes("34%"));
 	assert.ok(output.includes("Claude"));
 	assert.ok(output.includes("90%"));
 	assert.ok(output.includes("Codex"));
@@ -624,7 +625,8 @@ test("cursor remaining dollars uses API capAmount when metricSet has no cap", ()
 		settings,
 	);
 	assert.ok(output);
-	assert.ok(output.includes("Cursor $75.00"));
+	assert.ok(output.includes("Cursor"));
+	assert.ok(output.includes("$75.00"));
 	assert.equal(output.includes("75% rem."), false);
 	assert.ok(output.includes("Claude"));
 });
@@ -641,7 +643,11 @@ test("cursor spend uses API capAmount when metricSet has no cap", () => {
 		settings,
 	);
 	assert.ok(output);
-	assert.ok(output.includes("Cursor $25.00/$100.00"));
+	assert.ok(output.includes("Cursor"));
+	assert.ok(output.includes("$25.00/$100.00"));
+	assert.match(output, /^name /);
+	assert.match(output, /\nuse /);
+	assert.match(output, /\ntime /);
 	assert.equal(output.includes("25% used"), false);
 	assert.ok(output.includes("Claude"));
 });
@@ -686,9 +692,10 @@ test("cursor spend uses used/cap percent and $used/$cap label", () => {
 		settings,
 	);
 	assert.ok(output);
+	assert.match(output, /^name /);
+	assert.match(output, /\nuse /);
 	assert.ok(output.includes("Cursor"));
 	assert.ok(output.includes("$25.00/$100.00"));
-	assert.match(output, /^use /);
 	assert.ok(output.includes("Claude"));
 	assert.ok(output.includes("10%"));
 	assert.ok(output.includes("Codex"));
@@ -844,7 +851,7 @@ test("metricSetProviderLabel names subscriptions users expect", () => {
 	assert.equal(metricSetProviderLabel(geminiSnapshot()), "Gemini");
 });
 
-test("metricSet uses two rows for remaining and time with a prefix column", () => {
+test("metricSet uses three rows for names, remaining, and time with a prefix column", () => {
 	const settings = metricSetSettings([
 		{ provider: "cursor", display: "remaining", unit: "percent" },
 		{ provider: "anthropic", display: "remaining" },
@@ -872,19 +879,28 @@ test("metricSet uses two rows for remaining and time with a prefix column", () =
 	};
 	const lines = formatMetricSetLines(theme, settings.metricSet, snapshots, settings);
 	assert.ok(lines);
-	assert.equal(lines.length, 2);
-	assert.match(lines[0] ?? "", /^left /);
-	assert.match(lines[1] ?? "", /^time /);
-	assert.ok((lines[0] ?? "").includes("Cursor 34%"));
-	assert.ok((lines[0] ?? "").includes("Claude 90%/80%"));
-	assert.ok((lines[0] ?? "").includes("Codex 60%/50%"));
-	assert.ok((lines[1] ?? "").includes("26d16h"));
-	assert.ok((lines[1] ?? "").includes("4h/6d"));
-	assert.ok((lines[1] ?? "").includes("5h/2d"));
+	assert.equal(lines.length, 3);
+	assert.match(lines[0] ?? "", /^name /);
+	assert.match(lines[1] ?? "", /^left /);
+	assert.match(lines[2] ?? "", /^time /);
+	assert.ok((lines[0] ?? "").includes("Cursor"));
+	assert.ok((lines[0] ?? "").includes("Claude"));
+	assert.ok((lines[0] ?? "").includes("Codex"));
+	assert.ok((lines[1] ?? "").includes("34%"));
+	assert.ok((lines[1] ?? "").includes("90%/80%"));
+	assert.ok((lines[1] ?? "").includes("60%/50%"));
+	assert.ok((lines[2] ?? "").includes("26d16h"));
+	assert.ok((lines[2] ?? "").includes("4h/6d"));
+	assert.ok((lines[2] ?? "").includes("5h/2d"));
 	assert.equal((lines[1] ?? "").includes("Cursor"), false);
 	assert.equal((lines[1] ?? "").includes("Claude"), false);
 	assert.equal((lines[1] ?? "").includes("Codex"), false);
+	assert.equal((lines[2] ?? "").includes("Cursor"), false);
+	assert.equal((lines[2] ?? "").includes("Claude"), false);
+	assert.equal((lines[2] ?? "").includes("Codex"), false);
 	assert.equal(visibleWidth(lines[0] ?? ""), visibleWidth(lines[1] ?? ""));
+	assert.equal(visibleWidth(lines[1] ?? ""), visibleWidth(lines[2] ?? ""));
 	assert.ok(visibleWidth(lines[0] ?? "") < 80);
 	assert.ok(visibleWidth(lines[1] ?? "") < 80);
+	assert.ok(visibleWidth(lines[2] ?? "") < 80);
 });

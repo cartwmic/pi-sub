@@ -1,10 +1,11 @@
 /**
  * Metric-set display: ordered remaining-or-spend numbers, independent of model/pin.
  *
- * Nonempty metricSet renders at most two rows:
- *   left  <name remaining>  │  <name remaining>
+ * Nonempty metricSet renders at most three rows:
+ *   name  <name>            │  <name>
+ *   left  <remaining>       │  <remaining>
  *   time  <reset>           │  <reset>
- * Provider names stay on the remaining row only. A 4-column prefix names the row.
+ * Provider names have their own row. A 4-column prefix names the row.
  */
 
 import type { Theme } from "@mariozechner/pi-coding-agent";
@@ -31,6 +32,7 @@ type PreparedMetricWindow = {
 	unit: MetricUnit;
 };
 
+const NAME_PREFIX = "name";
 const REMAINING_PREFIX = "left";
 const SPEND_PREFIX = "used";
 const MIXED_PREFIX = "use";
@@ -264,7 +266,7 @@ function collectMetricColumns(
 		if (remainingBits.length === 0) continue;
 		columns.push({
 			name,
-			remaining: `${name} ${remainingBits.join("/")}`,
+			remaining: remainingBits.join("/"),
 			time: timeBits.length > 0 ? timeBits.join("/") : "—",
 			display: item.display,
 		});
@@ -280,9 +282,9 @@ function usageRowPrefix(columns: MetricColumn[]): string {
 }
 
 /**
- * Two-row metric-set layout. Row 1 is remaining/spend, row 2 is reset time.
- * A short prefix column labels each row. Provider names stay on the remaining row.
- * Never returns more than two lines.
+ * Three-row metric-set layout. Row 1 is provider names, row 2 is remaining/spend,
+ * row 3 is reset time. A short prefix column labels each row. Never returns more
+ * than three lines.
  */
 export function formatMetricSetLines(
 	theme: Theme,
@@ -296,24 +298,34 @@ export function formatMetricSetLines(
 	if (columns.length === 0) return undefined;
 
 	const remainingPrefix = usageRowPrefix(columns);
-	const prefixWidth = Math.max(visibleWidth(remainingPrefix), visibleWidth(TIME_PREFIX));
+	const prefixWidth = Math.max(
+		visibleWidth(NAME_PREFIX),
+		visibleWidth(remainingPrefix),
+		visibleWidth(TIME_PREFIX),
+	);
 	const divider = usageDivider(theme, settings);
-	const widths = columns.map((column) => Math.max(visibleWidth(column.remaining), visibleWidth(column.time)));
+	const widths = columns.map((column) => Math.max(
+		visibleWidth(column.name),
+		visibleWidth(column.remaining),
+		visibleWidth(column.time),
+	));
 
-	const remainingRow = `${theme.fg("dim", padVisible(remainingPrefix, prefixWidth))} ${columns
-		.map((column, index) => padVisible(column.remaining, widths[index] ?? 0))
-		.join(divider)}`;
-	const timeRow = `${theme.fg("dim", padVisible(TIME_PREFIX, prefixWidth))} ${columns
-		.map((column, index) => padVisible(column.time, widths[index] ?? 0))
-		.join(divider)}`;
-	return [remainingRow, timeRow];
+	const formatRow = (prefix: string, pick: (column: MetricColumn) => string) =>
+		`${theme.fg("dim", padVisible(prefix, prefixWidth))} ${columns
+			.map((column, index) => padVisible(pick(column), widths[index] ?? 0))
+			.join(divider)}`;
+	return [
+		formatRow(NAME_PREFIX, (column) => column.name),
+		formatRow(remainingPrefix, (column) => column.remaining),
+		formatRow(TIME_PREFIX, (column) => column.time),
+	];
 }
 
 /**
- * Render a nonempty metricSet as two newline-joined rows (remaining, then time).
- * Membership follows list order only. Unusable items are omitted.
- * Each remaining column is prefixed with its subscription name. The time row
- * keeps the same columns without repeating those names.
+ * Render a nonempty metricSet as three newline-joined rows (names, remaining,
+ * then time). Membership follows list order only. Unusable items are omitted.
+ * Each column shows its subscription name on the name row and keeps its position
+ * on the remaining and time rows.
  */
 export function formatMetricSet(
 	theme: Theme,
