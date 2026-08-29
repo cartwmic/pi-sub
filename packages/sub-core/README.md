@@ -92,7 +92,7 @@ Legacy cache files next to the extension entry or in the agent root are migrated
 | Google Gemini | Pro/Flash quotas | ✅ | Aggregated by model family |
 | Antigravity | Model quotas | ✅ | Sandbox Cloud Code Assist quotas (tested) |
 | OpenAI Codex | Primary/secondary windows | ✅ | Credits not yet supported (PRs welcome!) |
-| Cursor | Cycle percent plus spend vs API cap | - | Remaining percent needs no cap; dollars remaining/spend use API `capAmount` (team/hard-limit/on-demand, never the included pool) unless `metricSet` overrides `cap`; no compiled cap |
+| Cursor | Cycle percent plus spend vs API cap | - | Remaining percent needs no cap; dollars remaining/spend use API `capAmount` (enterprise per-user monthly / overall.limit, else team/hard-limit/on-demand — never usage-summary included+bonus, never org-wide hardLimit when a per-user monthly pool exists) unless `metricSet` overrides `cap`; no compiled cap |
 | AWS Kiro | Credits | - | Credits not yet supported (PRs welcome!) |
 | z.ai | Tokens/monthly limits | - | API quota limits |
 
@@ -130,7 +130,7 @@ See the root README “Developer guide” for the decision checklist and example
 1. Add provider name to `PROVIDERS` in `packages/sub-shared/index.ts` (`ProviderName`; re-exported from `src/types.ts`).
 2. Implement fetcher in `src/providers/impl/<provider>.ts`.
    Current impl files: `anthropic.ts`, `antigravity.ts`, `codex.ts`, `copilot.ts`, `cursor.ts`, `gemini.ts`, `kiro.ts`, `zai.ts`.
-   Cursor remaining percent uses first-party Auto usage (`autoPercentUsed`) and needs no cap. Cursor dollars remaining/spend use a positive `metricSet` cap when present, otherwise the provider API `capAmount`. Do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
+   Cursor remaining percent uses first-party Auto usage (`autoPercentUsed`) and needs no cap. Cursor dollars remaining/spend use a positive `metricSet` cap when present, otherwise the provider API `capAmount` (enterprise per-user monthly / `overall.limit` when present). Do not add a compiled or provider-default cap, and do not add a compiled personal/work `metricSet`.
 3. Register provider in `src/providers/registry.ts`.
 4. Add detection + status config in `src/providers/metadata.ts`.
 5. Add provider settings defaults in `src/settings-types.ts`.

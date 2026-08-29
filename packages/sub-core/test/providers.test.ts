@@ -561,7 +561,6 @@ test("cursor fetch prefers team/hard-limit dollars over the included pool", asyn
 			if (href === "https://cursor.com/api/dashboard/get-team-spend") {
 				return createJsonResponse({
 					teamMemberSpend: [{ userId: 42, spendCents: 12500, hardLimitOverrideDollars: 0 }],
-					monthlyLimitDollars: 500,
 				});
 			}
 			if (href === "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents") {
@@ -734,4 +733,63 @@ test("cursor fetch uses on-demand cents as spend when usage-based is enabled", a
 	assert.equal(usage.windows[0]?.usedPercent, 40);
 	assert.equal(usage.windows[0]?.usedAmount, 125);
 	assert.equal(usage.windows[0]?.capAmount, 750);
+});
+
+test("cursor fetch uses enterprise monthly pool instead of usage-based override or org hard-limit", async () => {
+	const provider = new CursorProvider();
+	const token = cursorAccessToken("user-1");
+	const { deps, files } = createDeps({
+		fetch: async (url, init) => {
+			const href = String(url);
+			const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+			if (href === "https://cursor.com/api/usage-summary") {
+				return createJsonResponse({
+					membershipType: "enterprise",
+					limitType: "team",
+					individualUsage: {
+						overall: { enabled: true, used: 50067, limit: 75000, remaining: 24933 },
+					},
+					teamUsage: { onDemand: { enabled: true, used: 5339, limit: 33610000, remaining: 33604661 } },
+				});
+			}
+			if (href === "https://cursor.com/api/dashboard/get-plan-info") {
+				return createJsonResponse({ planInfo: { planName: "Enterprise", billingCycleEnd: 1788220800000 } });
+			}
+			if (href === "https://cursor.com/api/dashboard/get-hard-limit") {
+				return createJsonResponse(
+					body.teamId === 4428794
+						? { hardLimit: 336100, hardLimitPerUser: 300, perUserMonthlyLimitDollars: 750 }
+						: { hardLimit: 336100 },
+				);
+			}
+			if (href === "https://cursor.com/api/dashboard/teams") {
+				return createJsonResponse({ teams: [{ id: 4428794 }] });
+			}
+			if (href === "https://cursor.com/api/dashboard/team") {
+				return createJsonResponse({ userId: 42 });
+			}
+			if (href === "https://cursor.com/api/dashboard/get-team-spend") {
+				return createJsonResponse({
+					hasAnySpendLimitOverrides: false,
+					teamMemberSpend: [{
+						userId: 42,
+						hardLimitOverrideDollars: 300,
+						overallSpendCents: 49882,
+						monthlyLimitDollars: 750,
+						effectivePerUserLimitDollars: 750,
+					}],
+				});
+			}
+			if (href === "https://api2.cursor.sh/aiserver.v1.DashboardService/GetAggregatedUsageEvents") {
+				return createJsonResponse({ totalCostCents: 50067.486232 });
+			}
+			throw new Error(`unexpected url ${href}`);
+		},
+	});
+	withAuth(files, { cursor: { access: token } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.windows[0]?.usedAmount, 500.67);
+	assert.equal(usage.windows[0]?.capAmount, 750);
+	assert.equal(usage.windows[0]?.usedPercent, (500.67 / 750) * 100);
 });
