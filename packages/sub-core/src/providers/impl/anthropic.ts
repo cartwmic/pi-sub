@@ -10,6 +10,8 @@ import { formatReset, createTimeoutController } from "../../utils.js";
 import { API_TIMEOUT_MS } from "../../config.js";
 import { getSettings } from "../../settings.js";
 
+const ANTHROPIC_USAGE_USER_AGENT = "claude-code/2.1.0";
+
 /**
  * Load Claude API token from various sources
  */
@@ -64,10 +66,39 @@ function getExtraUsageFormat(): ExtraUsageFormat {
 	};
 }
 
-function formatExtraUsageCredits(credits: number, format: ExtraUsageFormat): string {
-	const amount = (credits / 100).toFixed(2);
+function extraCreditsToDollars(credits: number, decimalPlaces?: number): number {
+	const places =
+		typeof decimalPlaces === "number" && Number.isInteger(decimalPlaces) && decimalPlaces >= 0 && decimalPlaces <= 8
+			? decimalPlaces
+			: 2;
+	return credits / 10 ** places;
+}
+
+function formatExtraUsageCredits(credits: number, format: ExtraUsageFormat, decimalPlaces?: number): string {
+	const amount = extraCreditsToDollars(credits, decimalPlaces).toFixed(2);
 	const formatted = format.decimalSeparator === "," ? amount.replace(".", ",") : amount;
 	return format.symbol ? `${format.symbol}${formatted}` : formatted;
+}
+
+type ExtraUsageWindow = {
+	utilization?: number;
+	resets_at?: string;
+};
+
+type ExtraUsage = {
+	is_enabled?: boolean;
+	used_credits?: number;
+	monthly_limit?: number;
+	utilization?: number;
+	decimal_places?: number;
+	resets_at?: string;
+	daily?: ExtraUsageWindow | null;
+	weekly?: ExtraUsageWindow | null;
+};
+
+function extraUsageResetAt(extra: ExtraUsage): Date | undefined {
+	const raw = extra.resets_at ?? extra.daily?.resets_at ?? extra.weekly?.resets_at;
+	return raw ? new Date(raw) : undefined;
 }
 
 
@@ -92,6 +123,8 @@ export class AnthropicProvider extends BaseProvider {
 				headers: {
 					Authorization: `Bearer ${token}`,
 					"anthropic-beta": "oauth-2025-04-20",
+					"User-Agent": ANTHROPIC_USAGE_USER_AGENT,
+					Accept: "application/json",
 				},
 				signal: controller.signal,
 			});
@@ -104,12 +137,7 @@ export class AnthropicProvider extends BaseProvider {
 			const data = (await res.json()) as {
 				five_hour?: { utilization?: number; resets_at?: string };
 				seven_day?: { utilization?: number; resets_at?: string };
-				extra_usage?: {
-					is_enabled?: boolean;
-					used_credits?: number;
-					monthly_limit?: number;
-					utilization?: number;
-				};
+				extra_usage?: ExtraUsage;
 			};
 
 			const windows: RateWindow[] = [];
@@ -144,19 +172,32 @@ export class AnthropicProvider extends BaseProvider {
 				const monthlyLimit = extra.monthly_limit;
 				const utilization = extra.utilization || 0;
 				const format = getExtraUsageFormat();
+				const usedAmount = extraCreditsToDollars(usedCredits, extra.decimal_places);
+				const capAmount =
+					monthlyLimit && monthlyLimit > 0
+						? extraCreditsToDollars(monthlyLimit, extra.decimal_places)
+						: undefined;
 				// "active" when 5h >= 99%, otherwise "on"
 				const extraStatus = fiveHourUsage >= 99 ? "active" : "on";
+				const extraResetAt = extraUsageResetAt(extra);
 				let label: string;
 				if (monthlyLimit && monthlyLimit > 0) {
-					label = `Extra [${extraStatus}] ${formatExtraUsageCredits(usedCredits, format)}/${formatExtraUsageCredits(monthlyLimit, format)}`;
+					label = `Extra [${extraStatus}] ${formatExtraUsageCredits(usedCredits, format, extra.decimal_places)}/${formatExtraUsageCredits(monthlyLimit, format, extra.decimal_places)}`;
 				} else {
-					label = `Extra [${extraStatus}] ${formatExtraUsageCredits(usedCredits, format)}`;
+					label = `Extra [${extraStatus}] ${formatExtraUsageCredits(usedCredits, format, extra.decimal_places)}`;
 				}
 
 				windows.push({
 					label,
 					usedPercent: utilization,
-					resetDescription: extraStatus === "active" ? "__ACTIVE__" : undefined,
+					usedAmount,
+					capAmount,
+					resetDescription: extraResetAt
+						? formatReset(extraResetAt)
+						: extraStatus === "active"
+							? "__ACTIVE__"
+							: undefined,
+					resetAt: extraResetAt?.toISOString(),
 				});
 			}
 

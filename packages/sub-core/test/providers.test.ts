@@ -23,11 +23,13 @@ function assertWindow(usage: UsageSnapshot, label: string): void {
 test("anthropic reads token from ANTHROPIC_OAUTH_TOKEN env var", async () => {
 	const provider = new AnthropicProvider();
 	let authorization: string | undefined;
+	let userAgent: string | undefined;
 
 	const { deps } = createDeps({
 		env: { ANTHROPIC_OAUTH_TOKEN: "env-token" },
 		fetch: async (_url, init) => {
 			authorization = (init as any)?.headers?.Authorization;
+			userAgent = (init as any)?.headers?.["User-Agent"];
 			return createJsonResponse({});
 		},
 		execFileSync: () => "",
@@ -35,6 +37,7 @@ test("anthropic reads token from ANTHROPIC_OAUTH_TOKEN env var", async () => {
 
 	await provider.fetchUsage(deps);
 	assert.equal(authorization, "Bearer env-token");
+	assert.equal(userAgent, "claude-code/2.1.0");
 });
 
 test("anthropic env token overrides auth.json", async () => {
@@ -72,7 +75,58 @@ test("anthropic parses windows and extra usage", async () => {
 	assertWindow(usage, "Week");
 	const extra = usage.windows.find((window) => window.label.startsWith("Extra"));
 	assert.ok(extra?.label.includes("Extra [active]"));
+	assert.equal(extra?.usedAmount, 12.34);
+	assert.equal(extra?.capAmount, 50);
 	assert.equal(usage.extraUsageEnabled, true);
+});
+
+test("anthropic extra-only usage reports credit dollars and extra reset", async () => {
+	const provider = new AnthropicProvider();
+	const resetAt = new Date(Date.now() + 12 * 86400_000).toISOString();
+	const { deps, files } = createDeps({
+		fetch: async () => createJsonResponse({
+			five_hour: null,
+			seven_day: null,
+			extra_usage: {
+				is_enabled: true,
+				used_credits: 56390,
+				monthly_limit: 100000,
+				utilization: 56.39,
+				decimal_places: 2,
+				resets_at: resetAt,
+			},
+		}),
+		execFileSync: () => "",
+	});
+	withAuth(files, { anthropic: { access: "token" } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	assert.equal(usage.windows.length, 1);
+	const extra = usage.windows[0];
+	assert.ok(extra?.label.startsWith("Extra [on]"));
+	assert.equal(extra?.usedAmount, 563.9);
+	assert.equal(extra?.capAmount, 1000);
+	assert.equal(extra?.resetAt, new Date(resetAt).toISOString());
+	assert.ok(extra?.resetDescription);
+	assert.notEqual(extra?.resetDescription, "__ACTIVE__");
+});
+
+test("anthropic extra without a reset timestamp leaves reset empty when 5h is not exhausted", async () => {
+	const provider = new AnthropicProvider();
+	const { deps, files } = createDeps({
+		fetch: async () => createJsonResponse({
+			extra_usage: { is_enabled: true, used_credits: 1234, monthly_limit: 5000, utilization: 24.68 },
+		}),
+		execFileSync: () => "",
+	});
+	withAuth(files, { anthropic: { access: "token" } }, deps.homedir());
+
+	const usage = await provider.fetchUsage(deps);
+	const extra = usage.windows.find((window) => window.label.startsWith("Extra"));
+	assert.equal(extra?.usedAmount, 12.34);
+	assert.equal(extra?.capAmount, 50);
+	assert.equal(extra?.resetDescription, undefined);
+	assert.equal(extra?.resetAt, undefined);
 });
 
 test("copilot reads token from GITHUB_TOKEN env var", async () => {

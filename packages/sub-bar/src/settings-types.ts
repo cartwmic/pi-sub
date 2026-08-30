@@ -428,7 +428,8 @@ export type MetricUnit = "percent" | "dollars";
  * One subscription in the ordered metric set.
  * `cap` is an optional override; source defaults never set it.
  * Cursor dollars remaining/spend use `cap` when present, otherwise the
- * provider's API `capAmount`. Cursor remaining percent uses first-party
+ * provider's API `capAmount`. Claude remaining dollars use Extra credit
+ * `usedAmount`/`capAmount`. Cursor remaining percent uses first-party
  * Auto usage (`autoPercentUsed`) and does not need a cap.
  */
 export interface MetricSetItem {

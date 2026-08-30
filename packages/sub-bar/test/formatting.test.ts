@@ -458,6 +458,21 @@ function anthropicSnapshot(): UsageSnapshot {
 	};
 }
 
+function anthropicExtraSnapshot(): UsageSnapshot {
+	return {
+		provider: "anthropic",
+		displayName: "Anthropic (Claude)",
+		extraUsageEnabled: true,
+		windows: [{
+			label: "Extra [on] 12.34/50.00",
+			usedPercent: 24.68,
+			usedAmount: 12.34,
+			capAmount: 50,
+			resetDescription: "12d",
+		}],
+	};
+}
+
 function codexSnapshot(): UsageSnapshot {
 	return {
 		provider: "codex",
@@ -629,6 +644,82 @@ test("cursor remaining dollars uses API capAmount when metricSet has no cap", ()
 	assert.ok(output.includes("$75.00"));
 	assert.equal(output.includes("75% rem."), false);
 	assert.ok(output.includes("Claude"));
+});
+
+test("anthropic remaining dollars uses Extra credit amounts", () => {
+	const settings = metricSetSettings([
+		{ provider: "cursor", display: "remaining", unit: "dollars" },
+		{ provider: "anthropic", display: "remaining", unit: "dollars" },
+	]);
+	settings.providers.anthropic.windows.show5h = false;
+	settings.providers.anthropic.windows.show7d = false;
+	settings.providers.anthropic.windows.showExtra = true;
+	const output = formatMetricSet(
+		theme,
+		settings.metricSet,
+		{ cursor: cursorSnapshot(25, 0, 100), anthropic: anthropicExtraSnapshot() },
+		settings,
+	);
+	assert.ok(output);
+	assert.ok(output.includes("Cursor"));
+	assert.ok(output.includes("$75.00"));
+	assert.ok(output.includes("Claude"));
+	assert.ok(output.includes("$37.66"));
+	assert.ok(output.includes("12d"));
+	assert.equal(output.includes("75.32%"), false);
+	assert.equal(output.includes("Extra [on]"), false);
+});
+
+test("anthropic remaining dollars prefers Extra amounts over 5h/Week percents", () => {
+	const settings = metricSetSettings([
+		{ provider: "anthropic", display: "remaining", unit: "dollars" },
+	]);
+	settings.providers.anthropic.windows.show5h = true;
+	settings.providers.anthropic.windows.show7d = true;
+	settings.providers.anthropic.windows.showExtra = true;
+	const snapshots = {
+		anthropic: {
+			...anthropicExtraSnapshot(),
+			windows: [
+				{ label: "5h", usedPercent: 10, resetDescription: "4h" },
+				{ label: "Week", usedPercent: 20, resetDescription: "6d" },
+				...anthropicExtraSnapshot().windows,
+			],
+		},
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("Claude"));
+	assert.ok(output.includes("$37.66"));
+	assert.ok(output.includes("12d"));
+	assert.equal(output.includes("90%"), false);
+	assert.equal(output.includes("80%"), false);
+	assert.equal(output.includes("4h"), false);
+	assert.equal(output.includes("6d"), false);
+});
+
+test("anthropic remaining dollars falls back to 5h/Week percents when Extra is hidden", () => {
+	const settings = metricSetSettings([
+		{ provider: "anthropic", display: "remaining", unit: "dollars" },
+		{ provider: "codex", display: "remaining" },
+	]);
+	settings.providers.anthropic.windows.showExtra = false;
+	const snapshots = {
+		anthropic: {
+			...anthropicExtraSnapshot(),
+			windows: [
+				{ label: "5h", usedPercent: 10, resetDescription: "4h" },
+				...anthropicExtraSnapshot().windows,
+			],
+		},
+		codex: codexSnapshot(),
+	};
+	const output = formatMetricSet(theme, settings.metricSet, snapshots, settings);
+	assert.ok(output);
+	assert.ok(output.includes("Claude"));
+	assert.ok(output.includes("90%"));
+	assert.ok(output.includes("Codex"));
+	assert.equal(output.includes("$37.66"), false);
 });
 
 test("cursor spend uses API capAmount when metricSet has no cap", () => {

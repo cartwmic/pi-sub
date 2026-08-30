@@ -54,10 +54,11 @@ function snapshotHasCredentials(snapshot: UsageSnapshot): boolean {
 /**
  * Providers whose windows report spend against an API-provided cap via
  * `usedAmount`/`capAmount`. Their dollar metrics are computed from those
- * fields; `cap` stays an optional override.
+ * fields; `cap` stays an optional override. Anthropic dollars come from Extra
+ * credits (`used_credits` / `monthly_limit`), not 5h/Week percent windows.
  */
 function usesApiCap(provider: ProviderName): boolean {
-	return provider === "cursor" || provider === "openrouter";
+	return provider === "cursor" || provider === "openrouter" || provider === "anthropic";
 }
 
 function windowUsedAmount(windows: RateWindow[]): number | undefined {
@@ -176,26 +177,33 @@ function prepareMetricSetItem(
 	const hasApiCap = usesApiCap(item.provider);
 
 	if (hasApiCap && unit === "dollars") {
-		const usedAmount = windowUsedAmount(snapshot.windows);
-		const capAmount = windowCapAmount(item, snapshot.windows);
-		if (typeof usedAmount !== "number" || !Number.isFinite(usedAmount) || !hasPositiveCap(capAmount)) {
-			return undefined;
+		const usedAmount = windowUsedAmount(visible);
+		const capAmount = windowCapAmount(item, visible);
+		if (typeof usedAmount === "number" && Number.isFinite(usedAmount) && hasPositiveCap(capAmount)) {
+			const usedPercent = (usedAmount / capAmount) * 100;
+			const source =
+				visible.find((window) =>
+					typeof window.usedAmount === "number" &&
+					Number.isFinite(window.usedAmount) &&
+					hasPositiveCap(window.capAmount),
+				) ?? visible[0];
+			const remaining = Math.max(0, capAmount - usedAmount);
+			const label =
+				item.display === "spend"
+					? `${formatDollars(usedAmount)}/${formatDollars(capAmount)}`
+					: formatDollars(remaining);
+			const window: RateWindow = {
+				...source,
+				usedPercent,
+				usedAmount,
+				capAmount,
+				label,
+			};
+			return [{ window, invertUsage, usage: snapshot, unit }];
 		}
-		const usedPercent = (usedAmount / capAmount) * 100;
-		const source = visible[0];
-		const remaining = Math.max(0, capAmount - usedAmount);
-		const label =
-			item.display === "spend"
-				? `${formatDollars(usedAmount)}/${formatDollars(capAmount)}`
-				: formatDollars(remaining);
-		const window: RateWindow = {
-			...source,
-			usedPercent,
-			usedAmount,
-			capAmount,
-			label,
-		};
-		return [{ window, invertUsage, usage: snapshot, unit }];
+		// Cursor/OpenRouter dollars without a cap omit the item. Anthropic Extra
+		// credits can be absent while 5h/Week percent windows are still usable.
+		if (item.provider !== "anthropic") return undefined;
 	}
 
 	// Percent must not inherit spend titles from the provider or a stale cache.
