@@ -110,7 +110,7 @@ Shortcuts are configurable via `sub-bar:settings` → Keybindings. Enter any val
 
 ## Communication with sub-core
 
-`sub-bar` is a display client. It listens for `sub-core:update-current`/`sub-core:ready` events and renders the widget. On startup it requests the current state via `sub-core:request`. When `metricSet` is nonempty, that request force-fetches entries for every listed provider so the composite widget is not limited to the selected-model cache. Later `update-all` payloads that omit a stale provider keep the last-good snapshot on screen and refetch in the background.
+`sub-bar` is a display client. It listens for `sub-core:update-current`/`sub-core:ready` events and renders the widget. On startup it requests the current state via `sub-core:request`. When `metricSet` is nonempty, that request force-fetches entries for every listed provider so the composite widget is not limited to the selected-model cache. Later `update-all` payloads that omit a stale provider keep the last-good snapshot on screen and refetch in the background. A settings-file change re-renders immediately and refreshes usage in the background; those background errors are logged and must not exit the process.
 
 `sub-bar` manages display settings and UI-only provider options (window visibility, labels, status indicator). Provider enablement lives in sub-core, but the sub-bar settings UI can toggle Enabled (auto/on/off) and forwards changes to `sub-core:settings:patch`. Ordering and refresh behavior are configured in `sub-core:settings`, and sub-core broadcasts updates that sub-bar consumes. The cycle command forwards to `sub-core:action` so core updates provider selection and then broadcasts the new state.
 

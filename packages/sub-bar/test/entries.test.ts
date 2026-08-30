@@ -64,6 +64,13 @@ test("merge keeps previous when incoming entries are undefined", () => {
 	assert.equal(mergeUsageEntries(previous, undefined), previous);
 });
 
+test("pickUsageSnapshot stamps lastSuccessAt when incoming windows are usable", () => {
+	const incoming = claude();
+	delete (incoming as { lastSuccessAt?: number }).lastSuccessAt;
+	const picked = pickUsageSnapshot(undefined, incoming);
+	assert.equal(typeof picked.lastSuccessAt, "number");
+});
+
 test("pickUsageSnapshot prefers incoming windows even if a fetch error is attached", () => {
 	const previous = claude();
 	const incoming = claude({

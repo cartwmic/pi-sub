@@ -172,7 +172,13 @@ export async function getCachedUsageEntry(
 ): Promise<ProviderUsageEntry | undefined> {
 	const ttlMs = getCacheTtlMs(settings);
 	const cachedEntry = await getCachedData(provider, ttlMs, cacheSnapshot);
-	const usage = cachedEntry?.usage ? { ...cachedEntry.usage, status: cachedEntry.status } : undefined;
+	const usage = cachedEntry?.usage
+		? {
+			...cachedEntry.usage,
+			status: cachedEntry.status,
+			lastSuccessAt: cachedEntry.usage.lastSuccessAt ?? cachedEntry.fetchedAt,
+		}
+		: undefined;
 	if (!usage || (usage.error && isExpectedMissingData(usage.error))) {
 		return undefined;
 	}
@@ -204,7 +210,11 @@ export async function fetchUsageEntries(
 	const results = await mapWithConcurrency(providers, concurrency, async (provider) => {
 		const result = await fetchUsageForProvider(deps, settings, provider, options);
 		const usage = result.usage
-			? ({ ...result.usage, status: result.status } as UsageSnapshot)
+			? ({
+				...result.usage,
+				status: result.status,
+				lastSuccessAt: result.usage.lastSuccessAt ?? Date.now(),
+			} as UsageSnapshot)
 			: undefined;
 		if (!usage || (usage.error && isExpectedMissingData(usage.error))) {
 			return undefined;

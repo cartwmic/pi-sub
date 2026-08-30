@@ -25,6 +25,7 @@ import { showSettingsUI } from "./src/settings-ui.js";
 import { decodeDisplayShareString } from "./src/share.js";
 import { upsertDisplayTheme } from "./src/settings/themes.js";
 import { getFallbackCoreSettings } from "./src/core-settings.js";
+import { runCaught } from "./src/run-caught.js";
 
 type SubCoreRequest =
 	| {
@@ -180,7 +181,7 @@ export default function createExtension(pi: ExtensionAPI) {
 			const module = await import(bundledUrl.toString());
 			const createCore = module.default as undefined | ((api: ExtensionAPI) => void | Promise<void>);
 			if (typeof createCore === "function") {
-				void createCore(pi);
+				runCaught("[pi-sub-bar] createCore", Promise.resolve(createCore(pi)));
 				return;
 			}
 		} catch {
@@ -190,13 +191,12 @@ export default function createExtension(pi: ExtensionAPI) {
 			const module = await import("@marckrenn/pi-sub-core");
 			const createCore = module.default as undefined | ((api: ExtensionAPI) => void | Promise<void>);
 			if (typeof createCore === "function") {
-				void createCore(pi);
+				runCaught("[pi-sub-bar] createCore", Promise.resolve(createCore(pi)));
 			}
 		} catch (error) {
 			console.warn("Failed to auto-load sub-core:", error);
 		}
 	}
-
 
 	async function promptImportAction(ctx: ExtensionContext): Promise<"save-apply" | "save" | "cancel"> {
 		return new Promise((resolve) => {
@@ -411,7 +411,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		};
 		coreSettings = getFallbackCoreSettings(settings);
 		updateFetchFailureTicker();
-		void ensurePinnedAndMetricSetEntries();
+		runCaught("[pi-sub-bar] ensurePinnedAndMetricSetEntries", ensurePinnedAndMetricSetEntries());
 		if (lastContext) {
 			renderCurrent(lastContext);
 		}
@@ -658,36 +658,41 @@ export default function createExtension(pi: ExtensionAPI) {
 			"usage",
 			(_tui: unknown, theme: Theme) => ({
 				render(width: number) {
-					const safeWidth = Math.max(1, width);
-					const showTopDivider = settings.display.showTopDivider ?? false;
-					const showBottomDivider = settings.display.showBottomDivider ?? true;
-					const dividerChar = settings.display.dividerCharacter ?? "•";
-					const dividerColor: ThemeColor = resolveDividerColor(settings.display.dividerColor);
-					const dividerConnect = settings.display.dividerFooterJoin ?? false;
-					const dividerLine = theme.fg(dividerColor, "─".repeat(safeWidth));
+					try {
+						const safeWidth = Number.isFinite(width) && width >= 1 ? Math.max(1, Math.floor(width)) : 1;
+						const showTopDivider = settings.display.showTopDivider ?? false;
+						const showBottomDivider = settings.display.showBottomDivider ?? true;
+						const dividerChar = settings.display.dividerCharacter ?? "•";
+						const dividerColor: ThemeColor = resolveDividerColor(settings.display.dividerColor);
+						const dividerConnect = settings.display.dividerFooterJoin ?? false;
+						const dividerLine = theme.fg(dividerColor, "─".repeat(safeWidth));
 
-					let lines = formatUsageContent(ctx, theme, usage, safeWidth, message);
-					if (lines.length === 0) {
+						let lines = formatUsageContent(ctx, theme, usage, safeWidth, message);
+						if (lines.length === 0) {
+							return [];
+						}
+
+						if (showTopDivider) {
+							const baseLine = lines.length > 0 ? lines[0] : "";
+							const topLine = dividerConnect
+								? buildDividerLine(safeWidth, baseLine, dividerChar, dividerConnect, "top", dividerColor, theme)
+								: dividerLine;
+							lines = [topLine, ...lines];
+						}
+						if (showBottomDivider) {
+							const baseLine = lines.length > 0 ? lines[lines.length - 1] : "";
+							const footerLine = dividerConnect
+								? buildDividerLine(safeWidth, baseLine, dividerChar, dividerConnect, "bottom", dividerColor, theme)
+								: dividerLine;
+							lines = [...lines, footerLine];
+						}
+
+						const backgroundColor = resolveBackgroundColor(settings.display.backgroundColor);
+						return applyBackground(lines, theme, backgroundColor, safeWidth);
+					} catch (err) {
+						console.error("[pi-sub-bar] widget.render", err);
 						return [];
 					}
-
-					if (showTopDivider) {
-						const baseLine = lines.length > 0 ? lines[0] : "";
-						const topLine = dividerConnect
-							? buildDividerLine(safeWidth, baseLine, dividerChar, dividerConnect, "top", dividerColor, theme)
-							: dividerLine;
-						lines = [topLine, ...lines];
-					}
-					if (showBottomDivider) {
-						const baseLine = lines.length > 0 ? lines[lines.length - 1] : "";
-						const footerLine = dividerConnect
-							? buildDividerLine(safeWidth, baseLine, dividerChar, dividerConnect, "bottom", dividerColor, theme)
-							: dividerLine;
-						lines = [...lines, footerLine];
-					}
-
-					const backgroundColor = resolveBackgroundColor(settings.display.backgroundColor);
-					return applyBackground(lines, theme, backgroundColor, safeWidth);
 				},
 				invalidate() {},
 			}),
@@ -781,12 +786,16 @@ export default function createExtension(pi: ExtensionAPI) {
 	}
 
 	function renderCurrent(ctx: ExtensionContext): void {
-		if (!coreAvailable) {
-			renderUsageWidget(ctx, undefined, "pi-sub-core required. install with: pi install npm:@marckrenn/pi-sub-core");
-			return;
+		try {
+			if (!coreAvailable) {
+				renderUsageWidget(ctx, undefined, "pi-sub-core required. install with: pi install npm:@marckrenn/pi-sub-core");
+				return;
+			}
+			const usage = resolveDisplayedUsage();
+			renderUsageWidget(ctx, usage);
+		} catch (err) {
+			console.error("[pi-sub-bar] renderCurrent", err);
 		}
-		const usage = resolveDisplayedUsage();
-		renderUsageWidget(ctx, usage);
 	}
 
 	function updateUsage(usage: UsageSnapshot | undefined): void {
@@ -888,10 +897,14 @@ export default function createExtension(pi: ExtensionAPI) {
 	async function ensurePinnedEntries(pinned: ProviderName | null): Promise<void> {
 		if (!pinned) return;
 		if (usageEntries[pinned]) return;
-		const entries = await requestCoreEntries();
-		updateEntries(entries);
-		if (lastContext) {
-			renderCurrent(lastContext);
+		try {
+			const entries = await requestCoreEntries();
+			updateEntries(entries);
+			if (lastContext) {
+				renderCurrent(lastContext);
+			}
+		} catch (err) {
+			console.error("[pi-sub-bar] ensurePinnedEntries", err);
 		}
 	}
 
@@ -908,6 +921,8 @@ export default function createExtension(pi: ExtensionAPI) {
 			if (lastContext) {
 				renderCurrent(lastContext);
 			}
+		} catch (err) {
+			console.error("[pi-sub-bar] ensureMetricSetEntries", err);
 		} finally {
 			metricSetFetchInFlight = false;
 		}
@@ -931,7 +946,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		coreAvailable = true;
 		const state = payload as { state?: SubCoreState };
 		updateUsage(state.state?.usage);
-		void ensureMetricSetEntries();
+		runCaught("[pi-sub-bar] ensureMetricSetEntries", ensureMetricSetEntries());
 	});
 
 	pi.events.on("sub-core:ready", (payload) => {
@@ -939,7 +954,7 @@ export default function createExtension(pi: ExtensionAPI) {
 		const state = payload as { state?: SubCoreState; settings?: CoreSettings };
 		applyCoreSettings(state.settings);
 		updateUsage(state.state?.usage);
-		void ensureMetricSetEntries();
+		runCaught("[pi-sub-bar] ensureMetricSetEntries", ensureMetricSetEntries());
 	});
 
 	pi.events.on("sub-core:settings:updated", (payload) => {
@@ -964,9 +979,9 @@ export default function createExtension(pi: ExtensionAPI) {
 					settings = updatedSettings;
 					updateFetchFailureTicker();
 					if (settings.pinnedProvider && settings.pinnedProvider !== previousPinned) {
-						void ensurePinnedEntries(settings.pinnedProvider);
+						runCaught("[pi-sub-bar] ensurePinnedEntries", ensurePinnedEntries(settings.pinnedProvider));
 					}
-					void ensureMetricSetEntries();
+					runCaught("[pi-sub-bar] ensureMetricSetEntries", ensureMetricSetEntries());
 					if (lastContext) {
 						renderCurrent(lastContext);
 					}
@@ -991,7 +1006,7 @@ export default function createExtension(pi: ExtensionAPI) {
 				onDisplayThemeShared: (name, shareString, mode) => shareThemeString(ctx, name, shareString, mode ?? "prompt"),
 			});
 			settings = newSettings;
-			void ensurePinnedAndMetricSetEntries();
+			runCaught("[pi-sub-bar] ensurePinnedAndMetricSetEntries", ensurePinnedAndMetricSetEntries());
 			if (lastContext) {
 				renderCurrent(lastContext);
 			}
@@ -1129,33 +1144,37 @@ export default function createExtension(pi: ExtensionAPI) {
 
 		const sessionContext = ctx;
 		const bootstrap = async () => {
-			await ensureSubCoreLoaded();
-			if (!lastContext || lastContext !== sessionContext) return;
-			const state = await requestCoreState(uiEnabled ? 1000 : 15000);
-			if (!lastContext || lastContext !== sessionContext) return;
-			if (state) {
-				coreAvailable = true;
-				updateUsage(state.usage);
-			}
-			const metricRequest = metricSetEntriesRequest(settings.metricSet.length);
-			if (settings.pinnedProvider || metricRequest) {
-				const timeoutMs = metricRequest?.timeoutMs ?? (uiEnabled ? 1000 : 45000);
-				const force = metricRequest?.force ?? (uiEnabled ? undefined : true);
-				const entries = await requestCoreEntries(timeoutMs, force);
+			try {
+				await ensureSubCoreLoaded();
 				if (!lastContext || lastContext !== sessionContext) return;
-				if (entries) coreAvailable = true;
-				updateEntries(entries);
-				if (lastContext) {
+				const state = await requestCoreState(uiEnabled ? 1000 : 15000);
+				if (!lastContext || lastContext !== sessionContext) return;
+				if (state) {
+					coreAvailable = true;
+					updateUsage(state.usage);
+				}
+				const metricRequest = metricSetEntriesRequest(settings.metricSet.length);
+				if (settings.pinnedProvider || metricRequest) {
+					const timeoutMs = metricRequest?.timeoutMs ?? (uiEnabled ? 1000 : 45000);
+					const force = metricRequest?.force ?? (uiEnabled ? undefined : true);
+					const entries = await requestCoreEntries(timeoutMs, force);
+					if (!lastContext || lastContext !== sessionContext) return;
+					if (entries) coreAvailable = true;
+					updateEntries(entries);
+					if (lastContext) {
+						renderCurrent(lastContext);
+					}
+				} else if (lastContext) {
+					if (!state) coreAvailable = false;
 					renderCurrent(lastContext);
 				}
-			} else if (lastContext) {
-				if (!state) coreAvailable = false;
-				renderCurrent(lastContext);
+			} catch (err) {
+				console.error("[pi-sub-bar] session_start bootstrap", err);
 			}
 		};
 
 		if (uiEnabled) {
-			void bootstrap();
+			runCaught("[pi-sub-bar] session_start bootstrap", bootstrap());
 		} else {
 			await bootstrap();
 		}

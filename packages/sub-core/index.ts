@@ -17,6 +17,7 @@ import { prioritizeWindowsForModel } from "./src/utils.js";
 import { getStorage } from "./src/storage.js";
 import { clearSettingsCache, loadSettings, saveSettings, SETTINGS_PATH } from "./src/settings.js";
 import { showSettingsUI } from "./src/settings-ui.js";
+import { runCaught } from "./src/run-caught.js";
 
 type SubCoreRequest =
 	| {
@@ -128,7 +129,11 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 			const entry = cache[provider];
 			if (!entry || !entry.usage) continue;
 			if (now - entry.fetchedAt >= ttlMs) continue;
-			const usage = { ...entry.usage, status: entry.status };
+			const usage = {
+				...entry.usage,
+				status: entry.status,
+				lastSuccessAt: entry.usage.lastSuccessAt ?? entry.fetchedAt,
+			};
 			if (usage.error && isExpectedMissingData(usage.error)) continue;
 			entries.push({ provider, usage });
 		}
@@ -142,7 +147,13 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 
 	const unsubscribeCache = onCacheUpdate((provider, entry) => {
 		if (!controllerState.currentProvider || provider !== controllerState.currentProvider) return;
-		const usage = entry?.usage ? { ...entry.usage, status: entry.status } : undefined;
+		const usage = entry?.usage
+			? {
+				...entry.usage,
+				status: entry.status,
+				lastSuccessAt: entry.usage.lastSuccessAt ?? entry.fetchedAt,
+			}
+			: undefined;
 		controllerState.cachedUsage = usage;
 		emitCurrentUpdate(controllerState.currentProvider, usage);
 	});
@@ -168,6 +179,8 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 		ensureSettingsLoaded();
 		try {
 			await controller.refresh(ctx, settings, controllerState, emitUpdate, options);
+		} catch (err) {
+			console.error("[pi-sub-core] refresh", err);
 		} finally {
 			if (!options?.skipFetch) {
 				lastUsageRefreshAt = Date.now();
@@ -183,6 +196,8 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 		ensureSettingsLoaded();
 		try {
 			await controller.refreshStatus(ctx, settings, controllerState, emitUpdate, options);
+		} catch (err) {
+			console.error("[pi-sub-core] refreshStatus", err);
 		} finally {
 			if (!options?.skipFetch) {
 				lastStatusRefreshAt = Date.now();
@@ -212,7 +227,7 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 				if (!lastContext) return;
 				const elapsed = lastUsageRefreshAt ? Date.now() - lastUsageRefreshAt : usageIntervalMs + 1;
 				if (elapsed >= usageIntervalMs) {
-					void refresh(lastContext);
+					runCaught("[pi-sub-core] refresh", refresh(lastContext));
 				}
 			}, usageTickMs);
 			usageRefreshInterval.unref?.();
@@ -225,7 +240,7 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 				if (!lastContext) return;
 				const elapsed = lastStatusRefreshAt ? Date.now() - lastStatusRefreshAt : statusIntervalMs + 1;
 				if (elapsed >= statusIntervalMs) {
-					void refreshStatus(lastContext);
+					runCaught("[pi-sub-core] refreshStatus", refreshStatus(lastContext));
 				}
 			}, statusTickMs);
 			statusRefreshInterval.unref?.();
@@ -255,8 +270,8 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 		setupRefreshInterval();
 		pi.events.emit("sub-core:settings:updated", { settings });
 		if (lastContext) {
-			void refresh(lastContext, { allowStaleCache: true, skipFetch: true });
-			void refreshStatus(lastContext, { allowStaleCache: true, skipFetch: true });
+			runCaught("[pi-sub-core] refresh", refresh(lastContext, { allowStaleCache: true, skipFetch: true }));
+			runCaught("[pi-sub-core] refreshStatus", refreshStatus(lastContext, { allowStaleCache: true, skipFetch: true }));
 		}
 	}
 
@@ -418,20 +433,33 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 	});
 
 	pi.events.on("sub-core:request", async (payload) => {
-		ensureSettingsLoaded();
 		const request = payload as SubCoreRequest;
-		if (request.type === "entries") {
-			const entries = await getEntries(request.force);
-			if (lastContext && settings.statusRefresh.refreshInterval > 0) {
-				await refreshStatus(lastContext, { force: request.force });
+		try {
+			ensureSettingsLoaded();
+			if (request.type === "entries") {
+				const entries = await getEntries(request.force);
+				if (lastContext && settings.statusRefresh.refreshInterval > 0) {
+					await refreshStatus(lastContext, { force: request.force });
+				}
+				request.reply({ entries });
+				return;
 			}
-			request.reply({ entries });
-			return;
+			request.reply({
+				state: lastState,
+				settings: request.includeSettings ? settings : undefined,
+			});
+		} catch (err) {
+			console.error("[pi-sub-core] sub-core:request", err);
+			try {
+				if (request.type === "entries") {
+					request.reply({ entries: [] });
+				} else {
+					request.reply({ state: lastState });
+				}
+			} catch {
+				// Ignore a second failure while replying.
+			}
 		}
-		request.reply({
-			state: lastState,
-			settings: request.includeSettings ? settings : undefined,
-		});
 	});
 
 	pi.events.on("sub-core:settings:patch", (payload) => {
@@ -439,7 +467,7 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 		if (!patch) return;
 		applySettingsPatch(patch);
 		if (lastContext) {
-			void refresh(lastContext);
+			runCaught("[pi-sub-core] refresh", refresh(lastContext));
 		}
 	});
 
@@ -448,10 +476,10 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 		if (!lastContext) return;
 		switch (action.type) {
 			case "refresh":
-				void refresh(lastContext, { force: action.force });
+				runCaught("[pi-sub-core] refresh", refresh(lastContext, { force: action.force }));
 				break;
 			case "cycleProvider":
-				void cycleProvider(lastContext);
+				runCaught("[pi-sub-core] cycleProvider", cycleProvider(lastContext));
 				break;
 		}
 	});
@@ -459,8 +487,8 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 	pi.on("session_start", async (_event, ctx) => {
 		lastContext = ctx;
 		ensureSettingsLoaded();
-		void refresh(ctx, { allowStaleCache: true, skipFetch: true });
-		void refreshStatus(ctx, { allowStaleCache: true, skipFetch: true });
+		runCaught("[pi-sub-core] refresh", refresh(ctx, { allowStaleCache: true, skipFetch: true }));
+		runCaught("[pi-sub-core] refreshStatus", refreshStatus(ctx, { allowStaleCache: true, skipFetch: true }));
 		pi.events.emit("sub-core:ready", { state: lastState, settings });
 	});
 
@@ -503,8 +531,8 @@ export default function createExtension(pi: ExtensionAPI, deps: Dependencies = c
 	pi.on("model_select" as unknown as "session_start", async (_event: unknown, ctx: ExtensionContext) => {
 		controllerState.currentProvider = undefined;
 		controllerState.cachedUsage = undefined;
-		void refresh(ctx, { force: true, allowStaleCache: true });
-		void refreshStatus(ctx, { force: true, allowStaleCache: true });
+		runCaught("[pi-sub-core] refresh", refresh(ctx, { force: true, allowStaleCache: true }));
+		runCaught("[pi-sub-core] refreshStatus", refreshStatus(ctx, { force: true, allowStaleCache: true }));
 	});
 
 	pi.on("session_shutdown", async () => {

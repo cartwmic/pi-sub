@@ -259,6 +259,9 @@ export function watchCacheUpdates(options?: CacheWatchOptions): () => void {
 			if (released) {
 				emitFromCache();
 			}
+		}).catch((err: unknown) => {
+			lockRetryPending = false;
+			console.error("[pi-sub-core] waitForLockRelease", err);
 		});
 	};
 

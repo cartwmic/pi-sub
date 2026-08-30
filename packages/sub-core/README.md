@@ -87,7 +87,7 @@ Legacy cache files next to the extension entry or in the agent root are migrated
 
 | Provider | Usage Data | Status Page | Notes |
 |----------|-----------|-------------|-------|
-| Anthropic (Claude) | 5h/Week windows, extra usage | ✅ | Extra usage on/off state |
+| Anthropic (Claude) | 5h/Week windows, extra usage | ✅ | Extra usage on/off state; Extra windows include `usedAmount`/`capAmount` from credits so remaining dollars can use the Extra pool |
 | GitHub Copilot | Monthly quota, requests | ✅ | Request multiplier support |
 | Google Gemini | Pro/Flash quotas | ✅ | Aggregated by model family |
 | Antigravity | Model quotas | ✅ | Sandbox Cloud Code Assist quotas (tested) |
@@ -159,7 +159,7 @@ Sub-core uses `pi.events` as an in-process pub/sub bus. Any `sub-*` extension ca
 - `sub-core:request` → `{ reply, includeSettings? }`
 - `sub-core:request` → `{ type: "entries", reply, force? }` (bulk usage entries)
 
-The `reply` callback receives `{ state }` or `{ entries }` immediately if available.
+The `reply` callback receives `{ state }` or `{ entries }` immediately if available. Cached snapshots stamp `lastSuccessAt` from `fetchedAt` so a display-only settings reload does not force-fetch every provider. Background `refresh` / `refreshStatus` errors are logged and must not exit the process.
 
 #### Actions (mutate core state)
 - `sub-core:settings:patch` → `{ patch }` (updates refresh interval/provider settings and persists)

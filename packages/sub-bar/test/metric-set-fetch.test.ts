@@ -29,6 +29,15 @@ test("metricSetNeedsRefresh is true when a listed provider is missing", () => {
 	assert.equal(metricSetNeedsRefresh(metricSet, { anthropic: claude }, 1_500, 60_000), true);
 });
 
+test("metricSetNeedsRefresh is true when lastSuccessAt is missing", () => {
+	const unstamped = { ...claude };
+	delete (unstamped as { lastSuccessAt?: number }).lastSuccessAt;
+	assert.equal(
+		metricSetNeedsRefresh([{ provider: "anthropic" }], { anthropic: unstamped }, 1_500, 60_000),
+		true,
+	);
+});
+
 test("metricSetNeedsRefresh is true when last-good data is older than the TTL", () => {
 	assert.equal(
 		metricSetNeedsRefresh(
