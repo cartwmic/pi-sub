@@ -579,32 +579,10 @@ export default function createExtension(pi: ExtensionAPI) {
 		return `${spacing}${theme.fg(dividerColor, dividerGlyph)}${spacing}`;
 	}
 
-	function headlessTheme(): Theme {
-		return {
-			fg: (_color: string, text: string) => text,
-			bold: (text: string) => text,
-			getBgAnsi: () => "",
-			getFgAnsi: () => "",
-		} as unknown as Theme;
-	}
-
 	function renderUsageWidget(ctx: ExtensionContext, usage: UsageSnapshot | undefined, message?: string): void {
-		if (!ctx.hasUI) {
-			const lines = formatUsageContent(ctx, headlessTheme(), usage, 120, message, {
-				forceNoFill: true,
-				forceLeftAlignment: true,
-				forceOverflow: "truncate",
-				useStatusSafePadding: true,
-			});
-			const line = lines.join(" ").trim();
-			console.error(`[pi-sub-bar] source=${import.meta.url}`);
-			console.error(`[pi-sub-bar] settings=${SETTINGS_PATH}`);
-			console.error(`[pi-sub-bar] metricSet=${JSON.stringify(settings.metricSet)}`);
-			console.error(`[pi-sub-bar] model=${ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "(none)"}`);
-			console.error(`[pi-sub-bar] usage ${line || "(empty)"}`);
-			return;
-		}
-		if (!uiEnabled) {
+		// Nested `pi --print` / subagent sessions have no TUI. Do not dump remaining
+		// credits to stderr — parents treat that as child protocol noise.
+		if (!ctx.hasUI || !uiEnabled) {
 			return;
 		}
 
